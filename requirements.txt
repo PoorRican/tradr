@@ -1,0 +1,8 @@
+matplotlib
+numpy
+requests
+pandas
+seaborn
+TA-lib
+scipy
+apscheduler

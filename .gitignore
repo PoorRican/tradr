@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+.ipynb_checkpoints/
+__pycache__/
+
+*.py[co]
+
+*.log
+data/*
+.old.git
