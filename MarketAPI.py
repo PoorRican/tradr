@@ -32,6 +32,19 @@ class Market(ABC):
         self.data = pd.DataFrame(columns=('open', 'high', 'low', 'close', 'volume'))
 
     @abstractmethod
+    def update(self):
+        """ Update ticker data """
+        return NotImplemented
+
+    def load(self):
+        """ Load pickled data """
+        return NotImplemented
+
+    def save(self):
+        """ Save pickled data """
+        return NotImplemented
+
+    @abstractmethod
     def place_order(self, amount: float, rate: float, side: str) -> Union[dict, bool]:
         """ Post order to market.
         Args:
@@ -104,9 +117,9 @@ class GeminiAPI(Market):
         response = requests.get(BASE_URL + "/v1/book/btcusd")
         return response.json()
 
-    def update(self):
+    def update(self) -> None:
         """ Updates `data` with recent candle data """
-        self.data = combine_data(self.data, self.get_candles(self.time_frame))
+        self.data = combine_data(self.data, self.get_candles())
 
     def load(self):
         self.data = pd.read_pickle(self.filename)

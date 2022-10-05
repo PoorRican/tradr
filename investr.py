@@ -1,13 +1,16 @@
 import pandas as pd
-from MarketAPI import GeminiAPI
-from StochasticMACD import StochasticMACD
+from MarketAPI import Market
+from strategies.Strategy import Strategy
 
 
 class Investr(object):
     """ Mediator object which joins `MarketAPI` and `Strategy` """
-    def __init__(self, market: GeminiAPI, strategy: StochasticMACD):
-        self.market = market
+    def __init__(self, strategy: Strategy):
         self.strategy = strategy
+
+    @property
+    def market(self) -> Market:
+        return self.strategy.market
 
     def run(self):
         self.market.update()

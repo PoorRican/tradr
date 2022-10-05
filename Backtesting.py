@@ -4,7 +4,7 @@ Used for backtesting, improving and debugging strategies and models
 """
 
 from MarketAPI import Market
-from Strategy import Strategy
+from strategies.Strategy import Strategy
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Union
@@ -15,6 +15,8 @@ class SimulatedMarket(Market):
     """
     Mock class of `Market`.
     Has flat fee, always accepts an order.
+    Todo:
+        - Only accept trade 50% of the time. This adds realism to simulation.
     """
     def __init__(self):
         super().__init__()
@@ -35,14 +37,20 @@ class SimulatedMarket(Market):
 
 
 class Backtesting(object):
-    """Class to test strategies on existing ticker data.
+    """ Class to test strategies on existing ticker data.
 
     This plots market data and shows when a given strategy will
     decide to buy, hold, or sell.
+
+    Todo:
+        - Calculate PnL
     """
-    def __init__(self, market: Market, strategy: Strategy):
-        self.market = market
+    def __init__(self, strategy: Strategy):
         self.strategy = strategy
+
+    @property
+    def market(self):
+        return self.strategy.market
 
     def process_timeframes(self, start: Union[pd.Timestamp, str, None], end: Union[pd.Timestamp, str, None]):
         """
@@ -61,7 +69,7 @@ class Backtesting(object):
         frames = pd.date_range(start, end, freq="15min")
         for frame in frames:
             # TODO: log updates on data processing
-            self.strategy.process(self.market.data, frame)
+            self.strategy.process(frame)
         logging.info("Finished processing data")
 
     def plot(self, start: Union[pd.Timestamp, str], end: Union[pd.Timestamp, str]):

@@ -41,8 +41,9 @@ class Strategy(ABC):
         starting: starting amount of fiat currency
         market: reference to `Market` object
     """
+    name = 'base'
 
-    def __init__(self, starting_fiat: float, min_crypto: float, market: Market):
+    def __init__(self, starting_fiat: float, market: Market):
         self.orders = pd.DataFrame(columns=('amt', 'rate', 'price', 'side', 'id'))
 
         self.starting = float(starting_fiat)
@@ -54,7 +55,7 @@ class Strategy(ABC):
     @property
     def filename(self):
         """ Filename for order data """
-        return path.join(DATA_ROOT, 'orders.pkl')
+        return path.join(DATA_ROOT, '%s_orders.pkl' % self.name)
 
     def load(self):
         """ Load order data """
@@ -67,7 +68,7 @@ class Strategy(ABC):
         """ Store order data """
         self.orders.to_pickle(self.filename)
 
-    def add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str):
+    def add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str) -> bool:
         """ Perform order and store in history.
 
         Args:
@@ -80,6 +81,9 @@ class Strategy(ABC):
         Returns:
             `true` if order was correctly stored.
             `false` if there was an error storing. Response and contents of error are logged.
+
+        Todo:
+            - Store values from `response` in order history, not self-generated values.
         """
         response = self.market.place_order(abs(amount), rate, side)
         try:
@@ -93,30 +97,30 @@ class Strategy(ABC):
             logging.error(e)
             return False
 
-    def process(self, data: pd.DataFrame, point: Union[pd.Timestamp, None] = None):
+    def process(self, point: pd.Timestamp = None) -> bool:
         """
         Determine and execute position.
 
         Args:
-            data: Available ticker data.
             point: Current position in time. Used during backtesting.
 
         Returns:
-            If algorithm decided to execute an order, the extrema at which an order was executed is returned.
-            Otherwise, `None` is returned.
+            If algorithm decided to place an order, the result of order execution is returned.
+            Otherwise, `False` is returned by default
         """
-        decision, extrema = self.determine_position(data, point)
-        if decision:
+        position = self.determine_position(point)
+
+        if position:
+            side, extrema = position
+            assert side in ('buy', 'sell')
             try:
                 self.orders[extrema]                # has an order been placed for given extrema?
             except KeyError:
-                if decision == 'buy':
-                    self.buy(extrema)
-                elif decision == 'sell':
-                    self.sell(extrema)
+                if side == 'buy':
+                    return self.buy(extrema)
                 else:
-                    pass
-                return extrema
+                    return self.sell(extrema)
+        return False
 
     @abstractmethod
     def calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
@@ -207,9 +211,9 @@ class Strategy(ABC):
             A local estimated sum of order amounts.
         """
         if self.orders.empty:
-            return self.amount
+            return 0
         else:
-            return self.orders['amt'].sum() + self.amount
+            return self.orders['amt'].sum()
 
     def total_fiat(self) -> float:
         """ Reporting function for total fiat accrued/held.
@@ -240,21 +244,26 @@ class Strategy(ABC):
         """
         return NotImplemented
 
-    @staticmethod
     @abstractmethod
-    def develop_signals(data: pd.DataFrame) -> pd.DataFrame:
+    def develop_signals(self) -> pd.DataFrame:
         """ Use available data to update indicators.
 
-        Args:
-            data: available ticker data.
-
         Returns:
-            Indicator data
+            Indicator/signal data
         """
         return NotImplemented
 
-    @staticmethod
     @abstractmethod
-    def determine_position(data: pd.DataFrame, point: pd.Timestamp) -> Union[Tuple[str, str],
-                                                                             Tuple[bool, bool]]:
+    def determine_position(self, point: pd.Timestamp) -> Union[Tuple[str, 'pd.Timestamp'],
+                                                               Tuple[bool, bool]]:
+        """ Determine whether buy or sell order should be executed.
+        Args:
+            point: Used in backtesting to simulate time
+
+        Returns:
+            If a valid extrema is found, returns a tuple with decision ('buy'/'sell') and extrema.
+
+            Otherwise, if no valid extrema is found, `False, False` is returned. Tuple is returned to prevent
+            an `TypeError` from being raised when unpacking non-iterable bool.
+        """
         return NotImplemented
