@@ -44,7 +44,8 @@ class Strategy(ABC):
     name = 'base'
 
     def __init__(self, starting_fiat: float, market: Market):
-        self.orders = pd.DataFrame(columns=('amt', 'rate', 'price', 'side', 'id'))
+        self.orders = pd.DataFrame(columns=('amt', 'rate', 'cost', 'side', 'id'))
+        self.failed_orders = pd.DataFrame(columns=('amt', 'rate', 'cost', 'side'))
 
         self.starting = float(starting_fiat)
 
@@ -69,7 +70,10 @@ class Strategy(ABC):
         self.orders.to_pickle(self.filename)
 
     def add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str) -> bool:
-        """ Perform order and store in history.
+        """ Send order to market, and store in history.
+
+        The assumption is that not all orders will post, so only orders that are executed (accepted by the
+        market) are stored. However, for the purposes of debugging, failed orders are stored.
 
         Args:
             extrema: timestamp at which an extrema occurred.
@@ -89,9 +93,11 @@ class Strategy(ABC):
         try:
             if response:
                 rate = float(response['price'])       # rate that order was fulfilled at
-                self.orders.loc[pd.to_datetime(extrema, infer_datetime_format=True)] = [amount, rate, amount*rate, side,
-                                                                                        response['order_id']]
+                self.orders.loc[extrema] = [amount, rate, amount*rate, side, response['order_id']]
                 return True
+            else:
+                self.failed_orders.loc[extrema] = [amount, rate, amount*rate, side]
+                return False
         except KeyError as e:
             logging.error(response)
             logging.error(e)
@@ -167,7 +173,7 @@ class Strategy(ABC):
         rate = self.calc_rate(extrema, 'buy')
         amount = self.calc_amount(extrema, 'buy')
 
-        accepted = self.add_order(extrema, amount, rate, -truncate(amount*rate, 2), 'buy')
+        accepted = self.add_order(extrema, amount, rate, truncate(amount*rate, 2), 'buy')
         if accepted:
             logging.info(f"Buy order at {rate} was placed at {datetime.now()}")
         return accepted
@@ -184,8 +190,6 @@ class Strategy(ABC):
             extrema:
                 Timestamp at which extrema occurred. This prevents multiple orders being placed for the same extrema
                 (local min or max).
-            data: Available ticker data
-            point: Simulated point in time. Used during backtesting.
 
         Returns:
             Outcome of order is returned:
@@ -200,34 +204,6 @@ class Strategy(ABC):
         if accepted:
             logging.info(f"Sell order at {rate} was placed at {datetime.now()}")
         return accepted
-
-    def total_amt(self) -> float:
-        """ Reporting function for total amount of asset currently held.
-
-        Can be used for active/live instances to show performance,
-        or to determine fitness during backtesting.
-
-        Returns:
-            A local estimated sum of order amounts.
-        """
-        if self.orders.empty:
-            return 0
-        else:
-            return self.orders['amt'].sum()
-
-    def total_fiat(self) -> float:
-        """ Reporting function for total fiat accrued/held.
-
-        Can be used for active/live instances to show performance,
-        or to determine fitness during backtesting.
-
-        Returns:
-            A local estimated sum of order prices.
-        """
-        if self.orders.empty:
-            return self.starting
-        else:
-            return self.orders['price'].sum() + self.starting
 
     @abstractmethod
     def is_profitable(self, amount: float, rate: float, side: str) -> bool:
@@ -254,8 +230,7 @@ class Strategy(ABC):
         return NotImplemented
 
     @abstractmethod
-    def determine_position(self, point: pd.Timestamp) -> Union[Tuple[str, 'pd.Timestamp'],
-                                                               Tuple[bool, bool]]:
+    def determine_position(self, point: pd.Timestamp) -> Union[Tuple[str, 'pd.Timestamp'], False]:
         """ Determine whether buy or sell order should be executed.
         Args:
             point: Used in backtesting to simulate time
@@ -267,3 +242,11 @@ class Strategy(ABC):
             an `TypeError` from being raised when unpacking non-iterable bool.
         """
         return NotImplemented
+
+    def pnl(self) -> float:
+        buy_orders = self.orders[self.orders['side'] == 'buy']
+        sell_orders = self.orders[self.orders['side'] == 'sell']
+
+        buy_cost = buy_orders['cost'].sum()
+        sell_cost = sell_orders['cost'].sum()
+        return sell_cost - buy_cost

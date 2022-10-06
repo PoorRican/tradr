@@ -28,13 +28,3 @@ class Investr(object):
     def save(self):
         self.market.save()
         self.strategy.save()
-
-    def calc_market_increase(self, rate):
-        """ Calculates potential increase of market value """
-        buy_orders = self.strategy.orders[self.strategy.orders['side'] == 'buy']
-        return buy_orders['price'].sum() - buy_orders['amt'].sum() * rate
-
-    def calc_profit(self, rate):
-        """ Calculates how much profit was generated against the market volatility """
-        sell_orders = self.strategy.orders[self.strategy.orders['side'] == 'sell']
-        return sell_orders['price'].sum() - self.calc_market_increase(rate)
