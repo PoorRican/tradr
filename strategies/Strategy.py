@@ -69,7 +69,7 @@ class Strategy(ABC):
         """ Store order data """
         self.orders.to_pickle(self.filename)
 
-    def add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str) -> bool:
+    def _add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str) -> bool:
         """ Send order to market, and store in history.
 
         The assumption is that not all orders will post, so only orders that are executed (accepted by the
@@ -104,8 +104,9 @@ class Strategy(ABC):
             return False
 
     def process(self, point: pd.Timestamp = None) -> bool:
-        """
-        Determine and execute position.
+        """ Determine and execute position.
+
+        This method is the main interface method.
 
         Args:
             point: Current position in time. Used during backtesting.
@@ -114,7 +115,7 @@ class Strategy(ABC):
             If algorithm decided to place an order, the result of order execution is returned.
             Otherwise, `False` is returned by default
         """
-        position = self.determine_position(point)
+        position = self._determine_position(point)
 
         if position:
             side, extrema = position
@@ -123,14 +124,16 @@ class Strategy(ABC):
                 self.orders[extrema]                # has an order been placed for given extrema?
             except KeyError:
                 if side == 'buy':
-                    return self.buy(extrema)
+                    return self._buy(extrema)
                 else:
-                    return self.sell(extrema)
+                    return self._sell(extrema)
         return False
 
     @abstractmethod
-    def calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
         """ Calculate rate for trade.
+
+        This method should return the same value for given parameters.
 
         Args:
             extrema: Index/timestamp which triggered trade.
@@ -142,8 +145,11 @@ class Strategy(ABC):
         return NotImplemented
 
     @abstractmethod
-    def calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
         """ Calculate amount for trade.
+
+        This method should return the same value for given parameters.
+
          Args:
             extrema: Index/timestamp which triggered trade.
             side: Type of trade. May be 'buy'/'sell'
@@ -153,7 +159,7 @@ class Strategy(ABC):
         """
         return NotImplemented
 
-    def buy(self, extrema: pd.Timestamp) -> bool:
+    def _buy(self, extrema: pd.Timestamp) -> bool:
         """
         Attempt to perform buy.
 
@@ -170,15 +176,15 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        rate = self.calc_rate(extrema, 'buy')
-        amount = self.calc_amount(extrema, 'buy')
+        rate = self._calc_rate(extrema, 'buy')
+        amount = self._calc_amount(extrema, 'buy')
 
-        accepted = self.add_order(extrema, amount, rate, truncate(amount*rate, 2), 'buy')
+        accepted = self._add_order(extrema, amount, rate, truncate(amount * rate, 2), 'buy')
         if accepted:
             logging.info(f"Buy order at {rate} was placed at {datetime.now()}")
         return accepted
 
-    def sell(self, extrema: pd.Timestamp) -> bool:
+    def _sell(self, extrema: pd.Timestamp) -> bool:
         """
         Attempt to perform sell.
 
@@ -197,16 +203,16 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        rate = self.calc_rate(extrema, 'sell')
-        amount = self.calc_amount(extrema, 'sell')
+        rate = self._calc_rate(extrema, 'sell')
+        amount = self._calc_amount(extrema, 'sell')
 
-        accepted = self.add_order(extrema, amount, rate, truncate(amount*rate, 2), 'sell')
+        accepted = self._add_order(extrema, amount, rate, truncate(amount * rate, 2), 'sell')
         if accepted:
             logging.info(f"Sell order at {rate} was placed at {datetime.now()}")
         return accepted
 
     @abstractmethod
-    def is_profitable(self, amount: float, rate: float, side: str) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
         """
         Determine if the given trade is profitable or not.
 
@@ -221,7 +227,7 @@ class Strategy(ABC):
         return NotImplemented
 
     @abstractmethod
-    def develop_signals(self) -> pd.DataFrame:
+    def _develop_signals(self) -> pd.DataFrame:
         """ Use available data to update indicators.
 
         Returns:
@@ -230,8 +236,9 @@ class Strategy(ABC):
         return NotImplemented
 
     @abstractmethod
-    def determine_position(self, point: pd.Timestamp) -> Union[Tuple[str, 'pd.Timestamp'], False]:
+    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], False]:
         """ Determine whether buy or sell order should be executed.
+
         Args:
             point: Used in backtesting to simulate time
 
