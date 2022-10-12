@@ -123,7 +123,11 @@ class StaticAlternatingStrategy(Strategy):
             else:
                 side = 'sell'
 
-        extrema = self.market.data.iloc[-1].index
+        if point:
+            extrema = point
+        else:
+            extrema = self.market.data.iloc[-1].index
+
         rate = self._calc_rate(extrema, side)
         amount = self._calc_amount(extrema, side)
         if self._is_profitable(amount, rate, side):

@@ -142,7 +142,7 @@ class Strategy(ABC):
         Returns:
             Rate to use when buying
         """
-        return NotImplemented
+        pass
 
     @abstractmethod
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
@@ -157,7 +157,7 @@ class Strategy(ABC):
         Returns:
             Amount of asset to trade
         """
-        return NotImplemented
+        pass
 
     def _buy(self, extrema: pd.Timestamp) -> bool:
         """
@@ -224,7 +224,7 @@ class Strategy(ABC):
         Returns:
             Determination whether trade should be executed is binary. It is either profitable or not.
         """
-        return NotImplemented
+        pass
 
     @abstractmethod
     def _develop_signals(self) -> pd.DataFrame:
@@ -233,7 +233,7 @@ class Strategy(ABC):
         Returns:
             Indicator/signal data
         """
-        return NotImplemented
+        pass
 
     @abstractmethod
     def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], False]:
@@ -248,7 +248,7 @@ class Strategy(ABC):
             Otherwise, if no valid extrema is found, `False, False` is returned. Tuple is returned to prevent
             an `TypeError` from being raised when unpacking non-iterable bool.
         """
-        return NotImplemented
+        pass
 
     def pnl(self) -> float:
         buy_orders = self.orders[self.orders['side'] == 'buy']
