@@ -2,7 +2,7 @@
 Main file which implements `StocasticMACD` strategy,
 sets up logging, and runs scheduler.
 """
-from MarketAPI import GeminiAPI
+from markets.GeminiAPI import GeminiAPI
 from StochasticMACD import StochasticMACD
 from investr import Investr
 from apscheduler.schedulers.blocking import BlockingScheduler

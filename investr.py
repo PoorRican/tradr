@@ -1,5 +1,4 @@
-import pandas as pd
-from MarketAPI import Market
+from markets.Market import Market
 from strategies.Strategy import Strategy
 
 

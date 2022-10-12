@@ -1,79 +1,24 @@
-from abc import abstractmethod, ABC
-from os import path
-from typing import Union
-
 import base64
 import datetime
 import hashlib
 import hmac
 import json
+import time
+from os import path
+from typing import Union
+
 import pandas as pd
 import requests
-import time
 
-from data import json_to_df, combine_data, DATA_ROOT
+from data import json_to_df, DATA_ROOT, combine_data
+from markets.Market import Market
 
 BASE_URL = "https://api.gemini.com"
 
 
-class Market(ABC):
-    """ Core infrastructure which abstracts communication with exchange.
-
-    Posts sell and buy orders, records historical ticker data.
-
-    Todo:
-        - Add a layer of risk management:
-            - "runaway" trade decisions or unfavorable outcomes
-
-    Attributes:
-        data: available ticker data
-    """
-    def __init__(self):
-        self.data = pd.DataFrame(columns=('open', 'high', 'low', 'close', 'volume'))
-
-    @abstractmethod
-    def update(self):
-        """ Update ticker data """
-        return NotImplemented
-
-    def load(self):
-        """ Load pickled data """
-        return NotImplemented
-
-    def save(self):
-        """ Save pickled data """
-        return NotImplemented
-
-    @abstractmethod
-    def place_order(self, amount: float, rate: float, side: str) -> Union[dict, bool]:
-        """ Post order to market.
-        Args:
-            amount: amount of asset to trade
-            rate: exchange rate between asset and fiat
-            side: type of trade ('buy'/'sell')
-
-        Returns:
-            If the market accepted trade and the order was executed, details of trade are returned. This is
-            necessary because the `rate` of trade might be better than requested.
-        """
-        return NotImplemented
-
-    @abstractmethod
-    def calc_fee(self, *args, **kwargs):
-        """ Calculate cost of a transaction
-
-        Returns:
-
-        """
-        return NotImplemented
-
-    @property
-    @abstractmethod
-    def filename(self) -> str:
-        return NotImplemented
-
-
 class GeminiAPI(Market):
+    name = 'Gemini'
+
     def __init__(self, api_key, api_secret, time_frame='1m'):
         super().__init__()
         self.api_key = api_key
@@ -110,7 +55,7 @@ class GeminiAPI(Market):
     @property
     def filename(self):
         """ Return """
-        return path.join(DATA_ROOT, self.time_frame + ".pkl")
+        return path.join(DATA_ROOT, self.name + '_', self.time_frame + ".pkl")
 
     @staticmethod
     def get_orderbook() -> dict:

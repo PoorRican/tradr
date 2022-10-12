@@ -3,7 +3,6 @@
 Used for backtesting, improving and debugging strategies and models
 """
 
-from MarketAPI import Market
 from strategies.Strategy import Strategy
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,39 +10,11 @@ from typing import Union
 import logging
 
 
-class SimulatedMarket(Market):
-    """
-    Mock class of `Market`.
-    Has flat fee, always accepts an order.
-    Todo:
-        - Only accept trade 50% of the time. This adds realism to simulation.
-    """
-    def __init__(self):
-        super().__init__()
-
-    def place_order(self, amount, rate, side) -> Union[dict, bool]:
-        return {'amount': amount,
-                'price': rate,
-                'side': side,
-                'is_cancelled': False,
-                'order_id': 0}
-
-    @property
-    def filename(self) -> str:
-        return 'data/15m.pkl'
-
-    def calc_fee(self):
-        return 0.35
-
-
 class Backtesting(object):
     """ Class to test strategies on existing ticker data.
 
     This plots market data and shows when a given strategy will
     decide to buy, hold, or sell.
-
-    Todo:
-        - Calculate PnL
     """
     def __init__(self, strategy: Strategy):
         self.strategy = strategy

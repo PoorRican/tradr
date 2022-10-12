@@ -2,7 +2,7 @@ import pandas as pd
 from data import DATA_ROOT
 from os import path
 from datetime import datetime
-from MarketAPI import Market
+from markets.Market import Market
 from typing import Tuple, Union
 from abc import ABC, abstractmethod
 import logging

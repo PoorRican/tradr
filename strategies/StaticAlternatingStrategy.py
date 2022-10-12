@@ -1,6 +1,6 @@
 import pandas as pd
 from Strategy import Strategy
-from MarketAPI import Market
+from markets.Market import Market
 from typing import Union, Tuple
 
 
