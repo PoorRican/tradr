@@ -60,6 +60,7 @@ class Market(ABC):
     def filename(self) -> str:
         pass
 
+    @abstractmethod
     def convert_freq(self, freq):
         """ Convert given market string interval into valid Pandas `DateOffset` value
 

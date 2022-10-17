@@ -37,3 +37,6 @@ class SimulatedMarket(Market):
     def update(self):
         self.model.update()
         self.data = self.model.data
+
+    def convert_freq(self, freq: str):
+        return self.model.convert_freq(freq)
