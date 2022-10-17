@@ -23,6 +23,23 @@ class Backtesting(object):
     def market(self):
         return self.strategy.market
 
+    def print_progress(self, current: int, interval: int = 10) -> None:
+        """ Print current progress
+
+        Args:
+            current: current timeframe being processed
+            interval: percentage as a whole number; interval at which to show progress. Defaults to `10`, showing
+                completion every 10%.
+        """
+        progress = self._progress(current)
+        if progress % interval is 0:
+            print("%d completed" % progress)
+
+    def _progress(self, current: int):
+        """ Show percentage complete as an integer """
+        total = len(self.market.data)
+        return (100 * current) // total
+
     def process_timeframes(self, start: Union[pd.Timestamp, str] = None, end: Union[pd.Timestamp, str] = None):
         """
         Process market data between given dates/timeframes
@@ -36,17 +53,22 @@ class Backtesting(object):
         if end is None:
             end = self.market.data.iloc[-1].name
 
-        logging.info("Beginning to process data")
+        msg = "Beginning to process data"
+        logging.info(msg)
+        print(msg)
 
         freq = self.market.data.attrs['freq']
         freq = self.market.convert_freq(freq)
 
         frames = pd.date_range(start, end, freq=freq)
-        for frame in frames:
-            # TODO: log updates on data processing
+        for i, frame in enumerate(frames):
+            # TODO: enable multithreading
+            self.print_progress(i)
             self.strategy.process(frame)
 
-        logging.info("Finished processing data")
+        msg = "Finished processing data"
+        logging.info(msg)
+        print(msg)
 
     def plot(self, start: Union[pd.Timestamp, str] = None, end: Union[pd.Timestamp, str] = None):
         """
