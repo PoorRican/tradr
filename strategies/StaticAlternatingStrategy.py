@@ -63,11 +63,10 @@ class StaticAlternatingStrategy(Strategy):
         last_trade = self.orders.iloc[-1]
         assert last_trade['side'] != side
 
-        gain = last_trade['cost'] - (amount * rate)
+        gain = amount * rate - last_trade['cost']
         return gain - self.market.calc_fee()
 
-    def _is_profitable(self, amount: float, rate: float, side: str,
-                       extrema: Union[pd.Timestamp, str] = None) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: str, extrema: Union[pd.Timestamp, str] = None) -> bool:
         """ Profitability is defined as any trade where net price exceeds a threshold.
 
         Examples:
@@ -89,8 +88,16 @@ class StaticAlternatingStrategy(Strategy):
         if side == 'sell':
             return self._calc_profit(amount, rate, side) >= self.threshold
         else:
-            second, last = [self.market.data.loc[:extrema].iloc[i]['close'] for i in (-2, -1)]
-            return second > last
+            if extrema:
+                data = self.market.data.loc[:extrema]
+            else:
+                data = self.market.data
+
+            # return False if there is not enough market data (this occurs during backtesting)
+            if len(data) > 2:
+                second, last = [data.iloc[i]['close'] for i in (-2, -1)]
+                return second > last
+            return False
 
     def _develop_signals(self) -> pd.DataFrame:
         """ Placeholder function
@@ -131,7 +138,7 @@ class StaticAlternatingStrategy(Strategy):
 
         rate = self._calc_rate(extrema, side)
         amount = self._calc_amount(extrema, side)
-        if self._is_profitable(amount, rate, side):
+        if self._is_profitable(amount, rate, side, extrema):
             return side, extrema
         else:
             return False
