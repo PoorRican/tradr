@@ -23,7 +23,7 @@ class Backtesting(object):
     def market(self):
         return self.strategy.market
 
-    def process_timeframes(self, start: Union[pd.Timestamp, str, None], end: Union[pd.Timestamp, str, None]):
+    def process_timeframes(self, start: Union[pd.Timestamp, str] = None, end: Union[pd.Timestamp, str] = None):
         """
         Process market data between given dates/timeframes
 
@@ -37,13 +37,18 @@ class Backtesting(object):
             end = self.market.data.iloc[-1].name
 
         logging.info("Beginning to process data")
-        frames = pd.date_range(start, end, freq="15min")
+
+        freq = self.market.data.attrs['freq']
+        freq = self.market.convert_freq(freq)
+
+        frames = pd.date_range(start, end, freq=freq)
         for frame in frames:
             # TODO: log updates on data processing
             self.strategy.process(frame)
+
         logging.info("Finished processing data")
 
-    def plot(self, start: Union[pd.Timestamp, str], end: Union[pd.Timestamp, str]):
+    def plot(self, start: Union[pd.Timestamp, str] = None, end: Union[pd.Timestamp, str] = None):
         """
         Plot strategy decisions between given dates/timestamps
 
@@ -51,10 +56,27 @@ class Backtesting(object):
             start: date or timestamp to begin plot
             end: date or timestamp to end plot
         """
+        if start is None:
+            start = self.market.data.iloc[0].name
+        if end is None:
+            end = self.market.data.iloc[-1].name
+
         self.market.data.loc[start:end]['close'].plot(color='blue')
+
         orders = self.strategy.orders.loc[start:end]
         buys = orders[orders['side'] == 'buy']
         sells = orders[orders['side'] == 'sell']
-        plt.scatter([pd.to_datetime(i) for i in buys.index], buys['rate'], marker='^', s=100, color='orange')
-        plt.scatter([pd.to_datetime(i) for i in sells.index], sells['rate'], marker='v', s=100, color='red')
+        if not buys.empty:
+            plt.scatter([pd.to_datetime(i.name) for i in buys], buys['rate'], marker='^', s=100, color='orange')
+        if not sells.empty:
+            plt.scatter([pd.to_datetime(i.name) for i in sells], sells['rate'], marker='v', s=100, color='red')
+
         plt.show()
+
+
+def increment_minute(timestamp):
+    return pd.Timestamp(timestamp) + pd.offsets.Minute(1)
+
+
+def decrement_minute(timestamp):
+    return pd.Timestamp(timestamp) - pd.offsets.Minute(1)

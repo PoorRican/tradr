@@ -59,3 +59,12 @@ class Market(ABC):
     @abstractmethod
     def filename(self) -> str:
         pass
+
+    def convert_freq(self, freq):
+        """ Convert given market string interval into valid Pandas `DateOffset` value
+
+        References:
+            View Pandas documentation for a list of valid values
+            https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#timeseries-offset-aliases
+        """
+        pass

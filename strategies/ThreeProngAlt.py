@@ -1,5 +1,5 @@
 import pandas as pd
-from Strategy import Strategy, truncate
+from strategies.Strategy import Strategy, truncate
 from typing import Union, Tuple
 from talib import STOCHRSI, MACD, BBANDS
 
@@ -31,15 +31,10 @@ class ThreeProngAlt(Strategy):
     """
     name = 'ThreeProngAlt'
 
-    def __init__(self, buy_cost: float, threshold: float, *args, **kwargs):
+    def __init__(self, threshold: float, *args, **kwargs):
         """
 
         Args:
-            buy_cost:
-                Amount of currency to spend in each buy transaction. This is used when determining the
-                amount of an asset to buy for each trade. For example, given that `buy_cost` is set to
-                `100` and `rate` is `200`, a buy trade will be attempted to purchase .5 units of the
-                underlying asset.
             threshold:
                 Minimum threshold (in currency amount) that a sale cost must exceed to deem
                 a trade as profitable. This threshold should be high enough to make a sale worth
@@ -50,7 +45,6 @@ class ThreeProngAlt(Strategy):
         """
         super().__init__(*args, **kwargs)
 
-        self.buy_cost = buy_cost
         self.threshold = threshold
 
         self.indicators = self._develop_signals()
@@ -84,17 +78,18 @@ class ThreeProngAlt(Strategy):
 
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
         last_order = self.orders.iloc[-1]
-        if side is 'sell':
+        if side == 'sell':
             assert last_order['side'] == 'buy'
             return last_order['amount']
-        if side is 'buy':
+        if side == 'buy':
             assert last_order['side'] == 'sell'
-            return self.buy_cost / self._calc_rate(extrema, side)
+            # TODO: amount should increase as total gain exceeds 125% of `starting`
+            return self.starting / self._calc_rate(extrema, side)
 
     def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold """
         assert side in ('buy', 'sell')
-        if side is 'buy':
+        if side == 'buy':
             return True
         else:
             last_buy = self.orders[self.orders['side'] == 'buy'].iloc[-1]
@@ -104,8 +99,11 @@ class ThreeProngAlt(Strategy):
             next_sell = amount * rate
             return truncate(next_sell, 2) > (truncate(last_cost + fee, 2) + 0.1)
 
-    def _check_bb(self, price: float) -> Union[str, False]:
+    def _check_bb(self, rate: float) -> Union[str, 'False']:
         """ Check that price is close to or beyond edge of Bollinger Bands
+
+        Args:
+            rate: Current ticker price
 
         Returns:
             `buy`/`sell`: Signal interpreted from Bollinger Bands.
@@ -121,14 +119,14 @@ class ThreeProngAlt(Strategy):
         buy += frame['lowerband']
         sell += frame['middleband']
 
-        if price <= buy:
+        if rate <= buy:
             return 'buy'
-        elif price >= sell:
+        elif rate >= sell:
             return 'sell'
         else:
             return False
 
-    def _check_macd(self) -> Union[str, False]:
+    def _check_macd(self) -> Union[str, 'False']:
         """ Get signal interpretation from MACD indicator
 
         Returns:
@@ -142,7 +140,7 @@ class ThreeProngAlt(Strategy):
         else:
             return False
 
-    def _check_stochrsi(self) -> Union[str, False]:
+    def _check_stochrsi(self) -> Union[str, 'False']:
         """ Get signal from Stochastic RSI.
 
         Returns:
@@ -160,14 +158,15 @@ class ThreeProngAlt(Strategy):
 
     def _develop_signals(self) -> pd.DataFrame:
         d = pd.DataFrame()
+        data = self.market.data['close']
 
-        d['upperband'], d['middleband'], d['upperband'] = BBANDS(self.market.data, 20)
-        d['macd'], d['macdsignal'], d['macdhist'] = MACD(self.market.data, 6, 26, 9)
-        d['fastk'], d['fastd'] = STOCHRSI(self.market.data, 14, 3)
+        d['upperband'], d['middleband'], d['lowerband'] = BBANDS(data, 20)
+        d['macd'], d['macdsignal'], d['macdhist'] = MACD(data, 6, 26, 9)
+        d['fastk'], d['fastd'] = STOCHRSI(data, 14, 3)
 
         return d
 
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], False]:
+    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
         """ Evaluate market and decide on trade.
 
         Forced alternation of trade types is executed here. Duplicate trade type is not returned if a new signal is
@@ -182,7 +181,7 @@ class ThreeProngAlt(Strategy):
 
         signals = (
             self._check_stochrsi(),
-            self._check_bb(extrema['price']),
+            self._check_bb(extrema['close']),
             self._check_macd(),
         )
         last_order_side = self.orders.iloc[-1]
@@ -190,9 +189,9 @@ class ThreeProngAlt(Strategy):
         if signals[0] == signals[1] == signals[2] != last_order_side:
             side = signals[0]
 
-            rate = self._calc_rate(extrema.index, side)
-            amount = self._calc_amount(extrema.index, side)
+            rate = self._calc_rate(extrema.name, side)
+            amount = self._calc_amount(extrema.name, side)
             if self._is_profitable(amount, rate, side):
-                return side, extrema.index
+                return side, extrema.name
 
         return False

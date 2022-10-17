@@ -18,12 +18,14 @@ BASE_URL = "https://api.gemini.com"
 
 class GeminiAPI(Market):
     name = 'Gemini'
+    valid_freqs = ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day')
 
     def __init__(self, api_key, api_secret, time_frame='1m'):
         super().__init__()
+        assert time_frame in self.valid_freqs
         self.api_key = api_key
         self.api_secret = api_secret.encode()
-        self.time_frame = time_frame
+        self.freq = time_frame
 
         self.load()
         self.update()
@@ -41,21 +43,27 @@ class GeminiAPI(Market):
             print(response)
             return 0.35
 
-    def get_candles(self) -> dict:
+    def get_candles(self) -> pd.DataFrame:
         """ Get all candles from Gemini (1m, 5m, 15m, 30m, 1hr)"""
-        if self.time_frame in ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day'):
-            response = requests.get(BASE_URL + "/v2/candles/btcusd/" + self.time_frame)
-            btc_candle_data = response.json()
+        assert self.freq in self.valid_freqs
 
-            data = json_to_df(btc_candle_data)
-            return data
-        else:
-            raise ValueError(self.time_frame + " is not valid.")
+        response = requests.get(BASE_URL + "/v2/candles/btcusd/" + self.freq)
+        btc_candle_data = response.json()
+        data = json_to_df(btc_candle_data)
+
+        # the Gemini API sends data in a reverse direction for some reason (lower index are later times)
+        # TODO: check that GeminiAPI has correct order of data in unittests
+        data = data.iloc[::-1]
+        assert data.iloc[0].name < data.iloc[-1].name
+
+        # set flag/metadata on `DataFrame`
+        data.attrs['freq'] = self.freq
+        return data
 
     @property
     def filename(self):
         """ Return """
-        return path.join(DATA_ROOT, self.name + '_', self.time_frame + ".pkl")
+        return path.join(DATA_ROOT, self.name + '_' + self.freq + ".pkl")
 
     @staticmethod
     def get_orderbook() -> dict:
@@ -64,10 +72,14 @@ class GeminiAPI(Market):
 
     def update(self) -> None:
         """ Updates `data` with recent candle data """
-        self.data = combine_data(self.data, self.get_candles())
+        # self.data = combine_data(self.data, self.get_candles())
+        self.data = self.get_candles()
 
     def load(self):
-        self.data = pd.read_pickle(self.filename)
+        try:
+            self.data = pd.read_pickle(self.filename)
+        except FileNotFoundError:
+            pass
 
     def save(self):
         self.data.to_pickle(self.filename)
@@ -76,7 +88,7 @@ class GeminiAPI(Market):
         if data is None:
             data = dict()
         t = datetime.datetime.now()
-        payload_nonce = str(int(time.mktime(t.timetuple()) * 1001000 + t.microsecond))
+        payload_nonce = time.time()
 
         payload = {"request": endpoint, "nonce": payload_nonce}
         payload.update(data)
@@ -120,3 +132,28 @@ class GeminiAPI(Market):
             return response
         else:
             return False
+
+    def convert_freq(self, freq: str):
+        """ Converts Gemini ticker interval to a value pandas can use.
+
+        Examples:
+            Gemini uses the string `15m` to denote an interval of 15 minutes, but
+            pandas uses `15min` for the same.
+
+        Args:
+            freq: Gemini ticker interval
+
+        Returns:
+
+        """
+        assert freq in self.valid_freqs
+
+        if 'm' in freq:
+            return freq + 'in'
+        elif 'hr' in freq:
+            return freq[:-2] + 'H'
+        else:
+            return '1D'
+
+
+

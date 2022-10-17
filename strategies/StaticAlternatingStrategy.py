@@ -1,5 +1,5 @@
 import pandas as pd
-from Strategy import Strategy
+from strategies.Strategy import Strategy
 from markets.Market import Market
 from typing import Union, Tuple
 
@@ -50,32 +50,32 @@ class StaticAlternatingStrategy(Strategy):
         else:
             raise ValueError('Invalid value for `side`')
 
-        return self.market.data.iloc[extrema][['open', 'close', third]].mean()
+        return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
         return self.amount
 
     def _calc_profit(self, amount: float, rate: float, side: str) -> float:
-        """ Calculates profit of a trade.
+        """ Calculates profit of a sale.
 
         Since trades consist of fixed asset amount, just compare cost.
         """
         last_trade = self.orders.iloc[-1]
         assert last_trade['side'] != side
 
-        gain = abs(last_trade['price'] - (amount * rate))
+        gain = last_trade['cost'] - (amount * rate)
         return gain - self.market.calc_fee()
 
-    def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: str,
+                       extrema: Union[pd.Timestamp, str] = None) -> bool:
         """ Profitability is defined as any trade where net price exceeds a threshold.
 
         Examples:
             Sell: for a threshold of 0.30, if the last buy trade cost 100, a profitable sell trade is any
             trade that exceeds 100.30.
 
-            Buy: any trade that is lower than the last two sequential decreases in price is executed.
-            (eg: if mean of open/close goes from 100 to 99, then 99 to 98,
-             a trade is executed if price is below 98)
+            Buy: any trade that is lower than a decrease in price is executed.
+            (eg: if mean of open/close goes from 100 to 99, a trade is executed if price is below 99)
 
         Oscillation of `side` is not enforced here. That should be accomplished by `determine_position`.
 
@@ -83,13 +83,14 @@ class StaticAlternatingStrategy(Strategy):
             amount: amount of asset being traded
             rate: current price of asset
             side: type of trade: 'buy'/'sell'
+            extrema: Used during backtesting
         """
         assert side in ('buy', 'sell')
         if side == 'sell':
             return self._calc_profit(amount, rate, side) >= self.threshold
         else:
-            third, second, last = [self.market.data.iloc[i]['rate'] for i in (-3, -2, -1)]
-            return third > second > last
+            second, last = [self.market.data.loc[:extrema].iloc[i]['close'] for i in (-2, -1)]
+            return second > last
 
     def _develop_signals(self) -> pd.DataFrame:
         """ Placeholder function
@@ -100,7 +101,7 @@ class StaticAlternatingStrategy(Strategy):
         return NotImplemented
 
     def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'],
-                                                                       False]:
+                                                                       'False']:
         """ Use market data to decide to execute buy/sell.
 
         The algorithm attempts to see if the opposite order type is profitable.
@@ -116,9 +117,9 @@ class StaticAlternatingStrategy(Strategy):
         if self.orders.empty:
             side = 'buy'
         else:
-            assert self.orders[-1].side in ('buy', 'sell')
+            assert self.orders.iloc[-1].side in ('buy', 'sell')
 
-            if self.orders[-1].side == 'sell':
+            if self.orders.iloc[-1].side == 'sell':
                 side = 'buy'
             else:
                 side = 'sell'
@@ -126,7 +127,7 @@ class StaticAlternatingStrategy(Strategy):
         if point:
             extrema = point
         else:
-            extrema = self.market.data.iloc[-1].index
+            extrema = self.market.data.iloc[-1].name
 
         rate = self._calc_rate(extrema, side)
         amount = self._calc_amount(extrema, side)

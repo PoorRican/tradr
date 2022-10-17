@@ -8,14 +8,6 @@ from abc import ABC, abstractmethod
 import logging
 
 
-def increment_minute(timestamp):
-    return pd.Timestamp(timestamp) + pd.offsets.Minute(1)
-
-
-def decrement_minute(timestamp):
-    return pd.Timestamp(timestamp) - pd.offsets.Minute(1)
-
-
 def truncate(f, n) -> float:
     """Truncates/pads a float f to n decimal places without rounding"""
     s = '{}'.format(f)
@@ -236,7 +228,7 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], False]:
+    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
         """ Determine whether buy or sell order should be executed.
 
         Args:
