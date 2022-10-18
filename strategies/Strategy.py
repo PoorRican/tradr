@@ -248,4 +248,4 @@ class Strategy(ABC):
 
         buy_cost = buy_orders['cost'].sum()
         sell_cost = sell_orders['cost'].sum()
-        return sell_cost - buy_cost
+        return self.starting - sell_cost - buy_cost
