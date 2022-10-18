@@ -61,6 +61,15 @@ class Strategy(ABC):
         """ Store order data """
         self.orders.to_pickle(self.filename)
 
+    def _calc_profit(self, amount: float, rate: float, side: str) -> float:
+        """ Calculates profit of a sale.
+        """
+        last_trade = self.orders.iloc[-1]
+        assert last_trade['side'] != side
+
+        gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
+        return gain - self.market.calc_fee()
+
     def _add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str) -> bool:
         """ Send order to market, and store in history.
 
@@ -219,8 +228,11 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
-    def _develop_signals(self) -> pd.DataFrame:
+    def _develop_signals(self, point: pd.Timestamp) -> pd.DataFrame:
         """ Use available data to update indicators.
+
+        Args:
+            point: Used in backtesting to simulate time
 
         Returns:
             Indicator/signal data

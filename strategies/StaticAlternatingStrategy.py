@@ -55,17 +55,6 @@ class StaticAlternatingStrategy(Strategy):
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
         return self.amount
 
-    def _calc_profit(self, amount: float, rate: float, side: str) -> float:
-        """ Calculates profit of a sale.
-
-        Since trades consist of fixed asset amount, just compare cost.
-        """
-        last_trade = self.orders.iloc[-1]
-        assert last_trade['side'] != side
-
-        gain = amount * rate - last_trade['cost']
-        return gain - self.market.calc_fee()
-
     def _is_profitable(self, amount: float, rate: float, side: str, extrema: Union[pd.Timestamp, str] = None) -> bool:
         """ Profitability is defined as any trade where net price exceeds a threshold.
 
@@ -99,7 +88,7 @@ class StaticAlternatingStrategy(Strategy):
                 return second > last
             return False
 
-    def _develop_signals(self) -> pd.DataFrame:
+    def _develop_signals(self, point: pd.Timestamp) -> pd.DataFrame:
         """ Placeholder function
 
         Since this strategy does not employ any signals, this is a dummy function

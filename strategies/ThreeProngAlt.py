@@ -47,7 +47,9 @@ class ThreeProngAlt(Strategy):
 
         self.threshold = threshold
 
-        self.indicators = self._develop_signals()
+        self.indicators = pd.DataFrame(columns=('upperband', 'middleband', 'lowerband',
+                                                'macd', 'macdsignal', 'macdhist',
+                                                'fastk', 'fastd'))
 
     def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
         """
@@ -68,7 +70,7 @@ class ThreeProngAlt(Strategy):
         Todo:
             - Integrate weights, so that extreme values do not skew
         """
-        assert side in ('buy', 'side')
+        assert side in ('buy', 'sell')
         if side == 'buy':
             third = 'high'
         else:
@@ -77,27 +79,30 @@ class ThreeProngAlt(Strategy):
         return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
-        last_order = self.orders.iloc[-1]
+        if self.orders.empty:
+            assert side == 'buy'
+            last_order = {'amt': 0, 'side': 'sell'}
+        else:
+            last_order = self.orders.iloc[-1]
+
         if side == 'sell':
             assert last_order['side'] == 'buy'
-            return last_order['amount']
+            return last_order['amt']
         if side == 'buy':
             assert last_order['side'] == 'sell'
             # TODO: amount should increase as total gain exceeds 125% of `starting`
             return self.starting / self._calc_rate(extrema, side)
 
     def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
-        """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold """
+        """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
+
+        Always buy according to signals.
+        """
         assert side in ('buy', 'sell')
         if side == 'buy':
             return True
         else:
-            last_buy = self.orders[self.orders['side'] == 'buy'].iloc[-1]
-            fee = self.market.calc_fee()
-
-            last_cost = last_buy['amount'] * last_buy['rate']
-            next_sell = amount * rate
-            return truncate(next_sell, 2) > (truncate(last_cost + fee, 2) + 0.1)
+            return self._calc_profit(amount, rate, side) >= self.threshold
 
     def _check_bb(self, rate: float) -> Union[str, 'False']:
         """ Check that price is close to or beyond edge of Bollinger Bands
@@ -132,7 +137,7 @@ class ThreeProngAlt(Strategy):
         Returns:
             `buy`/`sell`: Signal interpreted from Bollinger Bands.
          """
-        frame = self.indicators.iloc[-1][['macdhist']]
+        frame = self.indicators.iloc[-1]['macdhist']
         if frame < 0:
             return 'buy'
         elif frame > 0:
@@ -156,9 +161,14 @@ class ThreeProngAlt(Strategy):
         else:
             return False
 
-    def _develop_signals(self) -> pd.DataFrame:
-        d = pd.DataFrame()
-        data = self.market.data['close']
+    def _develop_signals(self, point: pd.Timestamp = None) -> pd.DataFrame:
+        d = pd.DataFrame(columns=('upperband', 'middleband', 'lowerband',
+                                  'macd', 'macdsignal', 'macdhist',
+                                  'fastk', 'fastd'))
+        if point:
+            data = self.market.data['close'].loc[:point]
+        else:
+            data = self.market.data['close']
 
         d['upperband'], d['middleband'], d['lowerband'] = BBANDS(data, 20)
         d['macd'], d['macdsignal'], d['macdhist'] = MACD(data, 6, 26, 9)
@@ -172,7 +182,7 @@ class ThreeProngAlt(Strategy):
         Forced alternation of trade types is executed here. Duplicate trade type is not returned if a new signal is
         generated.
         """
-        self._develop_signals()
+        self.indicators = self._develop_signals(point)
 
         if point:
             extrema = self.market.data.loc[point]
@@ -184,9 +194,13 @@ class ThreeProngAlt(Strategy):
             self._check_bb(extrema['close']),
             self._check_macd(),
         )
-        last_order_side = self.orders.iloc[-1]
+        if self.orders.empty:
+            # force buy for first trade
+            last_order_side = 'sell'
+        else:
+            last_order_side = self.orders.iloc[-1]['side']
 
-        if signals[0] == signals[1] == signals[2] != last_order_side:
+        if signals[0] and signals[0] == signals[1] == signals[2] != last_order_side:
             side = signals[0]
 
             rate = self._calc_rate(extrema.name, side)
