@@ -32,7 +32,7 @@ class Backtesting(object):
                 completion every 10%.
         """
         progress = self._progress(current)
-        if progress % interval is 0:
+        if progress > 0 and progress % interval is 0:
             print("%d completed" % progress)
 
     def _progress(self, current: int):
