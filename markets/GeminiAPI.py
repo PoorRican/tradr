@@ -20,12 +20,20 @@ class GeminiAPI(Market):
     name = 'Gemini'
     valid_freqs = ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day')
 
-    def __init__(self, api_key, api_secret, time_frame='1m'):
+    def __init__(self, api_key, api_secret, time_frame='1m', root=DATA_ROOT):
+        """
+        Args:
+            api_key: Gemini API key
+            api_secret: Gemini API secret
+            time_frame: ticker frequency
+            root: root directory to store ticker data
+        """
         super().__init__()
         assert time_frame in self.valid_freqs
         self.api_key = api_key
         self.api_secret = api_secret.encode()
         self.freq = time_frame
+        self.root = root
 
         self.load()
         self.update()
@@ -63,7 +71,7 @@ class GeminiAPI(Market):
     @property
     def filename(self):
         """ Return """
-        return path.join(DATA_ROOT, self.name + '_' + self.freq + ".pkl")
+        return path.join(self.root, self.name + '_' + self.freq + ".pkl")
 
     @staticmethod
     def get_orderbook() -> dict:
