@@ -172,7 +172,7 @@ class ThreeProngAlt(Strategy):
 
         d['upperband'], d['middleband'], d['lowerband'] = BBANDS(data, 20)
         d['macd'], d['macdsignal'], d['macdhist'] = MACD(data, 6, 26, 9)
-        d['fastk'], d['fastd'] = STOCHRSI(data, 14, 3)
+        d['fastk'], d['fastd'] = STOCHRSI(data, 14, 3, 3)
 
         return d
 
