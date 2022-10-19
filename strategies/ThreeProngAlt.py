@@ -1,5 +1,5 @@
 import pandas as pd
-from strategies.Strategy import Strategy, truncate
+from strategies.Strategy import Strategy
 from typing import Union, Tuple
 from talib import STOCHRSI, MACD, BBANDS
 
@@ -47,9 +47,9 @@ class ThreeProngAlt(Strategy):
 
         self.threshold = threshold
 
-        self.indicators = pd.DataFrame(columns=('upperband', 'middleband', 'lowerband',
+        self.indicators = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
                                                 'macd', 'macdsignal', 'macdhist',
-                                                'fastk', 'fastd'))
+                                                'fastk', 'fastd'])
 
     def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
         """
@@ -162,9 +162,9 @@ class ThreeProngAlt(Strategy):
             return False
 
     def _develop_signals(self, point: pd.Timestamp = None) -> pd.DataFrame:
-        d = pd.DataFrame(columns=('upperband', 'middleband', 'lowerband',
+        d = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
                                   'macd', 'macdsignal', 'macdhist',
-                                  'fastk', 'fastd'))
+                                  'fastk', 'fastd'])
         if point:
             data = self.market.data['close'].loc[:point]
         else:
