@@ -1,8 +1,8 @@
-matplotlib
-numpy
+matplotlib==3.6.1
+numpy==1.23.4
 requests
-pandas
-seaborn
-TA-lib
-scipy
-apscheduler
+pandas==1.5.1
+TA-lib==0.4.25
+scipy==1.9.2
+apscheduler==3.9.1
+pyyaml

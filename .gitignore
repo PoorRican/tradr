@@ -8,3 +8,6 @@ __pycache__/
 *.log
 data/*
 .old.git
+
+# secrets
+gemini_api.yml
