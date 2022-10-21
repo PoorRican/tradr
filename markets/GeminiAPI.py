@@ -42,7 +42,7 @@ class GeminiAPI(Market):
     def calc_fee(self) -> float:
         endpoint = '/v1/notionalvolume'
         response = self.post(endpoint)
-        # because the order is not on the books, order is subject to "taker" fee
+        # because `place_order` uses fill-or-kill orders, order is subject to "taker" fee
         # see https://www.gemini.com/fees/activetrader-fee-schedule#section-overview
         try:
             return response['api_taker_fee_bps'] / 100

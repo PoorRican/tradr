@@ -1,10 +1,10 @@
 import pandas as pd
-from strategies.Strategy import Strategy
+from strategies.OscillatingStrategy import OscillatingStrategy
 from typing import Union, Tuple
 from talib import STOCHRSI, MACD, BBANDS
 
 
-class ThreeProngAlt(Strategy):
+class ThreeProngAlt(OscillatingStrategy):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
 
     A buy or sale is made based on lt/gt comparisons of all three signals, and theoretically
@@ -87,9 +87,9 @@ class ThreeProngAlt(Strategy):
 
         if side == 'sell':
             assert last_order['side'] == 'buy'
+            # TODO: check `unpaired_buys`
             return last_order['amt']
         if side == 'buy':
-            assert last_order['side'] == 'sell'
             # TODO: amount should increase as total gain exceeds 125% of `starting`
             return self.starting / self._calc_rate(extrema, side)
 
@@ -176,36 +176,14 @@ class ThreeProngAlt(Strategy):
 
         return d
 
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
-        """ Evaluate market and decide on trade.
-
-        Forced alternation of trade types is executed here. Duplicate trade type is not returned if a new signal is
-        generated.
-        """
-        self.indicators = self._develop_signals(point)
-
-        if point:
-            extrema = self.market.data.loc[point]
-        else:
-            extrema = self.market.data.iloc[-1]
-
+    def _check_signals(self, extrema: pd.DataFrame) -> Union[str, 'False']:
         signals = (
             self._check_stochrsi(),
             self._check_bb(extrema['close']),
             self._check_macd(),
         )
-        if self.orders.empty:
-            # force buy for first trade
-            last_order_side = 'sell'
-        else:
-            last_order_side = self.orders.iloc[-1]['side']
 
-        if signals[0] and signals[0] == signals[1] == signals[2] != last_order_side:
-            side = signals[0]
-
-            rate = self._calc_rate(extrema.name, side)
-            amount = self._calc_amount(extrema.name, side)
-            if self._is_profitable(amount, rate, side):
-                return side, extrema.name
+        if signals[0] == signals[1] == signals[2]:
+            return signals[0]
 
         return False

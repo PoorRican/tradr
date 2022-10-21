@@ -28,6 +28,15 @@ class Strategy(ABC):
     To determine the fitness and performance of the trading strategy, reporting functions show the total amount of
     assets and fiat accrued. This can be used in active implementations as well as during backtesting.
 
+    The buy process happens in the following way:
+        - `process()` calls `determine_position` which determines what action should be taken, called `position`
+        - if `position` is "truthy", it contains values `side` (type of action to be taken), and `extrema` (the point
+            in the time-series to which an action is being taken for).
+        - If an action has already not been executed regarding the given `extrema`, either `_buy()` or `_sell()`
+            are called, dependent on the value of `side`.
+        - Both `_buy()` and `_sell()` call `_calc_rate`, `_calc_amount` and `add_order`.
+        - `add_order()` calls `market.place_order()` , who communicates with market API
+
     Attributes
         orders: history of orders performed by this strategy. Timestamps of extrema are used as indexes.
         starting: starting amount of fiat currency
@@ -36,10 +45,10 @@ class Strategy(ABC):
     name = 'base'
 
     def __init__(self, starting_fiat: float, market: Market):
-        self.orders = pd.DataFrame(columns=('amt', 'rate', 'cost', 'side', 'id'))
-        self.failed_orders = pd.DataFrame(columns=('amt', 'rate', 'cost', 'side'))
+        self.orders = pd.DataFrame(columns=['amt', 'rate', 'cost', 'side', 'id'])
+        self.failed_orders = pd.DataFrame(columns=['amt', 'rate', 'cost', 'side'])
 
-        self.starting = float(starting_fiat)
+        self.starting = starting_fiat
 
         self.market = market
 
@@ -255,6 +264,8 @@ class Strategy(ABC):
         pass
 
     def pnl(self) -> float:
+        # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning
+        #       the number of unpaired orders and unrealized gain.
         buy_orders = self.orders[self.orders['side'] == 'buy']
         sell_orders = self.orders[self.orders['side'] == 'sell']
 
