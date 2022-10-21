@@ -85,13 +85,15 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             last_order = self.orders.iloc[-1]
 
+        rate = self._calc_rate(extrema, side)
         if side == 'sell':
-            assert last_order['side'] == 'buy'
-            # TODO: check `unpaired_buys`
-            return last_order['amt']
+            other = self._check_unpaired(rate)
+            return last_order['amt'] + other['amt'].sum()
         if side == 'buy':
             # TODO: amount should increase as total gain exceeds 125% of `starting`
-            return self.starting / self._calc_rate(extrema, side)
+            # TODO: amount bought should not exceed amount of starting capital and should
+            #   take into account unpaired buy trades.
+            return self.starting / rate
 
     def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.

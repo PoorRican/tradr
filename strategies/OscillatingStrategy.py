@@ -88,6 +88,11 @@ class OscillatingStrategy(Strategy, ABC):
         """ Select of unpaired orders by cross-referencing `unpaired_buys` """
         return self.orders[self.orders['id'].isin(self.unpaired_buys.values)]
 
+    def _check_unpaired(self, rate: float):
+        """ If any unpaired orders can be sold at a profit. """
+        unpaired = self.get_unpaired_orders()
+        return unpaired[unpaired['rate'] <= rate]
+
     def unrealized_gain(self) -> float:
         """ Calculate potential gain if all unpaired orders were sold at the highest rate.
 
