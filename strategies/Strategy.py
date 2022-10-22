@@ -72,11 +72,15 @@ class Strategy(ABC):
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
         return gain - self.market.calc_fee()
 
+    def _post_sale(self, trade: SuccessfulTrade):
+        """ Post sale processing of trade before adding to local container. """
+        pass
+
     def _add_order(self, extrema: pd.Timestamp, side: str) -> Union['SuccessfulTrade', 'False']:
         """ Create and send order to market, then store in history.
 
-        The assumption is that not all orders will post, so only orders that are executed (accepted by the
-        market) are stored. However, for the purposes of debugging, failed orders are stored.
+        Not all orders will post, so only orders that are executed (accepted by the market) are stored.
+        However, for the purposes of debugging, failed orders are stored.
 
         Args:
             extrema: timestamp at which an extrema occurred.
@@ -92,6 +96,7 @@ class Strategy(ABC):
 
         response = self.market.place_order(trade)
         if response:
+            self._post_sale(response)
             add_to_df(self, 'orders', extrema, response)
             return response
         else:

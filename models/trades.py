@@ -28,7 +28,6 @@ class Trade:
 @dataclass
 class SuccessfulTrade(Trade):
     id: field(default_factory=str)
-    related: field(default_factory=list) = None
 
 
 def trade_container(cls: type(Trade)) -> 'pd.DataFrame':
