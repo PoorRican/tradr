@@ -10,8 +10,9 @@ from typing import Union
 import pandas as pd
 import requests
 
-from data import json_to_df, DATA_ROOT, combine_data
+from models.data import json_to_df, DATA_ROOT
 from markets.Market import Market
+from models.trades import Trade, SuccessfulTrade
 
 BASE_URL = "https://api.gemini.com"
 
@@ -118,7 +119,18 @@ class GeminiAPI(Market):
 
         return response.json()
 
-    def place_order(self, amount, rate, side) -> Union[dict, bool]:
+    def _convert(self, response: dict, trade: Trade) -> 'SuccessfulTrade':
+        """ Translate exchange response into `SuccessfulTrade`.
+
+        Used to store data from exchange. This is necessary because exchange data (such as "rate")
+        might be different from the original data sent to the server and should therefore not be stored.
+        """
+        rate = response['price']
+        amount = response['amt']
+        _id = response['order_id']
+        return SuccessfulTrade(amount, rate, trade.side, id=_id)
+
+    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
         """ Places an order - specifically a Fill-or-Kill Limit Order.
 
         As per Gemini documentation:
@@ -128,16 +140,16 @@ class GeminiAPI(Market):
         """
         data = {
             'symbol': "btcusd",
-            'amount': amount,
-            'price': rate,
-            'side': side,
+            'amount': trade.amt,
+            'price': trade.rate,
+            'side': trade.side,
             'type': "exchange limit",
             'options': ["fill-or-kill"]
         }
 
         response = self.post("/v1/order/new", data)
         if not response['is_cancelled']:  # order was fulfilled
-            return response
+            return self._convert(response, trade)
         else:
             return False
 

@@ -1,6 +1,8 @@
+from abc import ABC
 from typing import Union
 
 from markets.Market import Market
+from models.trades import Trade, SuccessfulTrade
 
 
 class SimulatedMarket(Market):
@@ -18,14 +20,13 @@ class SimulatedMarket(Market):
         self.update()
         self.orders = 0
 
-    def place_order(self, amount, rate, side) -> Union[dict, bool]:
-        order = {'amount': amount,
-                 'price': rate,
-                 'side': side,
-                 'is_cancelled': False,
-                 'order_id': self.orders}
+    def _convert(self, trade: Trade, response: dict = None,) -> 'SuccessfulTrade':
+        trade = SuccessfulTrade(trade.amt, trade.rate, trade.side, self.orders)
         self.orders += 1
-        return order
+        return trade
+
+    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', bool]:
+        return self._convert(trade)
 
     @property
     def filename(self) -> str:

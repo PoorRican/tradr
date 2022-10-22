@@ -3,6 +3,8 @@ from typing import Union
 
 import pandas as pd
 
+from models.trades import Trade, SuccessfulTrade
+
 
 class Market(ABC):
     """ Core infrastructure which abstracts communication with exchange.
@@ -33,15 +35,18 @@ class Market(ABC):
         pass
 
     @abstractmethod
-    def place_order(self, amount: float, rate: float, side: str) -> Union[dict, bool]:
+    def _convert(self, trade: Trade, response: dict) -> 'SuccessfulTrade':
+        """ Generate `SuccessfulTrade` """
+        pass
+
+    @abstractmethod
+    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', bool]:
         """ Post order to market.
         Args:
-            amount: amount of asset to trade
-            rate: exchange rate between asset and fiat
-            side: type of trade ('buy'/'sell')
+            trade: Potential trade data
 
         Returns:
-            If the market accepted trade and the order was executed, details of trade are returned. This is
+            If the market accepted trade and the order was executed, `SuccessfulTrade` is returned. This is
             necessary because the `rate` of trade might be better than requested.
         """
         pass

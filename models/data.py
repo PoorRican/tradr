@@ -60,7 +60,7 @@ def write_data(data, fn) -> None:
     data.to_pickle(fn)
 
 
-def update_candles(root='data/'):
+def update_candles(root='../data/'):
     """ Get and update ALL candle data from Gemini and write to disk. """
     for t in ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day'):
         data = get_candles(t)

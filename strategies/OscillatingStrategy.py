@@ -5,7 +5,6 @@ from datetime import datetime
 import pandas as pd
 
 from strategies.Strategy import Strategy
-from markets.Market import Market
 
 
 class OscillatingStrategy(Strategy, ABC):

@@ -1,20 +1,13 @@
 import pandas as pd
-from data import DATA_ROOT
 from os import path
 from datetime import datetime
-from markets.Market import Market
 from typing import Tuple, Union
 from abc import ABC, abstractmethod
 import logging
 
-
-def truncate(f, n) -> float:
-    """Truncates/pads a float f to n decimal places without rounding"""
-    s = '{}'.format(f)
-    if 'e' in s or 'E' in s:
-        return float('{0:.{1}f}'.format(f, n))
-    i, p, d = s.partition('.')
-    return float('.'.join([i, (d+'0'*n)[:n]]))
+from models.trades import Trade, SuccessfulTrade, add_to_df, truncate
+from markets.Market import Market
+from models.data import DATA_ROOT
 
 
 class Strategy(ABC):
@@ -45,8 +38,8 @@ class Strategy(ABC):
     name = 'base'
 
     def __init__(self, starting_fiat: float, market: Market):
-        self.orders = pd.DataFrame(columns=['amt', 'rate', 'cost', 'side', 'id'])
-        self.failed_orders = pd.DataFrame(columns=['amt', 'rate', 'cost', 'side'])
+        self.orders = SuccessfulTrade.container()
+        self.failed_orders = Trade.container()
 
         self.starting = starting_fiat
 
@@ -79,38 +72,30 @@ class Strategy(ABC):
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
         return gain - self.market.calc_fee()
 
-    def _add_order(self, extrema: pd.Timestamp, amount: float, rate: float, cost: float, side: str) -> bool:
-        """ Send order to market, and store in history.
+    def _add_order(self, extrema: pd.Timestamp, side: str) -> Union['SuccessfulTrade', 'False']:
+        """ Create and send order to market, then store in history.
 
         The assumption is that not all orders will post, so only orders that are executed (accepted by the
         market) are stored. However, for the purposes of debugging, failed orders are stored.
 
         Args:
             extrema: timestamp at which an extrema occurred.
-            amount: the amount of asset which was traded.
-            rate: rate at which asset cost.
-            cost: total cost of trade in terms of fiat.
-            side: type of order: 'buy' or 'sell'
+            side: type of trade to execute
 
         Returns:
-            `true` if order was correctly stored.
-            `false` if there was an error storing. Response and contents of error are logged.
-
-        Todo:
-            - Store values from `response` in order history, not self-generated values.
+            `SuccessfulTrade` (returned from `market.place_order()`) if market accepted trade
+            `False` if trade was rejected by market there was an error storing
         """
-        response = self.market.place_order(abs(amount), rate, side)
-        try:
-            if response:
-                rate = float(response['price'])       # rate that order was fulfilled at
-                self.orders.loc[extrema] = [amount, rate, amount*rate, side, response['order_id']]
-                return True
-            else:
-                self.failed_orders.loc[extrema] = [amount, rate, amount*rate, side]
-                return False
-        except KeyError as e:
-            logging.error(response)
-            logging.error(e)
+        amount = self._calc_amount(extrema, side)
+        rate = self._calc_rate(extrema, side)
+        trade = Trade(amount, rate, side)
+
+        response = self.market.place_order(trade)
+        if response:
+            add_to_df(self, 'orders', extrema, response)
+            return response
+        else:
+            add_to_df(self, 'failed_orders', extrema, trade)
             return False
 
     def process(self, point: pd.Timestamp = None) -> bool:
@@ -173,7 +158,9 @@ class Strategy(ABC):
         """
         Attempt to perform buy.
 
-        Profitability must be determined *before* this function is called.
+        Notes:
+            Called by `process` and calls `_add_order()` which sends directly to `market`. Therefore, profitability must
+            be determined *before* this function is called.
 
         Args:
             extrema:
@@ -186,13 +173,10 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        rate = self._calc_rate(extrema, 'buy')
-        amount = self._calc_amount(extrema, 'buy')
-
-        accepted = self._add_order(extrema, amount, rate, truncate(amount * rate, 2), 'buy')
+        accepted = self._add_order(extrema, 'buy')
         if accepted:
-            logging.info(f"Buy order at {rate} was placed at {datetime.now()}")
-        return accepted
+            logging.info(f"Buy order at {accepted.rate} was placed at {datetime.now()}")
+        return bool(accepted)
 
     def _sell(self, extrema: pd.Timestamp) -> bool:
         """
@@ -213,13 +197,10 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        rate = self._calc_rate(extrema, 'sell')
-        amount = self._calc_amount(extrema, 'sell')
-
-        accepted = self._add_order(extrema, amount, rate, truncate(amount * rate, 2), 'sell')
+        accepted = self._add_order(extrema, 'sell')
         if accepted:
-            logging.info(f"Sell order at {rate} was placed at {datetime.now()}")
-        return accepted
+            logging.info(f"Sell order at {accepted.rate} was placed at {datetime.now()}")
+        return bool(accepted)
 
     @abstractmethod
     def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
