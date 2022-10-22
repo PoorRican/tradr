@@ -1,19 +1,30 @@
-from abc import ABC
 from typing import Union
+import pandas as pd
 
-from markets.Market import Market
+from core.api_proto import APIPrototype
+from core import Exchange, Market
 from models.trades import Trade, SuccessfulTrade
 
 
-class SimulatedMarket(Market):
-    """
-    Mock class of `Market`.
-    Has flat fee, always accepts an order.
+class SimulatedPlatform(Market, Exchange, APIPrototype):
+    """ Mock class of `Platform`.
+
+    Uses flat fee, and always accepts an order.
+
     Todo:
         - Only accept trade 50% of the time. This adds realism to simulation.
     """
 
-    def __init__(self, model: Market):
+    @classmethod
+    def _process_secrets(cls, *args):
+        pass
+
+    @classmethod
+    def post(cls, endpoint: str, data: dict = None) -> dict:
+        pass
+
+    def __init__(self, model):
+        self.valid_freqs = model.valid_freqs
         super().__init__()
 
         self.model = model
@@ -41,3 +52,6 @@ class SimulatedMarket(Market):
 
     def convert_freq(self, freq: str):
         return self.model.convert_freq(freq)
+
+    def get_candles(self, freq: str) -> pd.DataFrame:
+        return self.model.get_candles(freq)

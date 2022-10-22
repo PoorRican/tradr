@@ -21,7 +21,7 @@ class Backtesting(object):
 
     @property
     def market(self):
-        return self.strategy.market
+        return self.strategy.platform
 
     def print_progress(self, current: int, interval: int = 10) -> None:
         """ Print current progress
@@ -32,7 +32,7 @@ class Backtesting(object):
                 completion every 10%.
         """
         progress = self._progress(current)
-        if progress > 0 and progress % interval is 0:
+        if progress > 0 and progress % interval == 0:
             print("%d completed" % progress)
 
     def _progress(self, current: int):
