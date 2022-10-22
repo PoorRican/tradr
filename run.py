@@ -2,7 +2,7 @@
 Main file which implements `StocasticMACD` strategy,
 sets up logging, and runs scheduler.
 """
-from markets.GeminiAPI import GeminiAPI
+from core.markets.GeminiMarket import GeminiMarket
 from StochasticMACD import StochasticMACD
 from investr import Investr
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -10,7 +10,7 @@ import logging
 
 api_key = "account-n60VfGdUsMQmM3KUIPK2"
 api_secret = "459WjMdQT6mWGYB1rxQejwi74wJs"
-mark = GeminiAPI(api_key, api_secret)
+mark = GeminiMarket(api_key, api_secret)
 
 amount = 0.000500    # $5 worth at time of writing
 fiat = 50.0

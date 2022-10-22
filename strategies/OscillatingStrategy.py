@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from strategies.Strategy import Strategy
+from strategies.strategy import Strategy
 from models.trades import SuccessfulTrade
 
 

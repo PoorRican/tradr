@@ -9,17 +9,21 @@ from models.trades import Trade, SuccessfulTrade
 class Market(ABC):
     """ Core infrastructure which abstracts communication with exchange.
 
-    Posts sell and buy orders, records historical ticker data.
+    Posts sell and buy orders, records historical candle data.
 
     Todo:
         - Add a layer of risk management:
             - "runaway" trade decisions or unfavorable outcomes
-
-    Attributes:
-        data: available ticker data
     """
     def __init__(self):
-        self.data = pd.DataFrame(columns=('open', 'high', 'low', 'close', 'volume'))
+        self.data = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+        """DataFrame: container for candle data.
+        
+        Container gets populated by `get_candles` and should otherwise be read-only.
+        
+        Notes:
+            Should have `source` and `freq` set via the `DataFrame.attrs` convention.
+        """
 
     @abstractmethod
     def update(self):
@@ -42,8 +46,10 @@ class Market(ABC):
     @abstractmethod
     def place_order(self, trade: Trade) -> Union['SuccessfulTrade', bool]:
         """ Post order to market.
+
         Args:
-            trade: Potential trade data
+            trade:
+                Potential trade data
 
         Returns:
             If the market accepted trade and the order was executed, `SuccessfulTrade` is returned. This is
@@ -52,10 +58,8 @@ class Market(ABC):
         pass
 
     @abstractmethod
-    def calc_fee(self, *args, **kwargs):
+    def get_fee(self, *args, **kwargs) -> float:
         """ Calculate cost of a transaction
-
-        Returns:
 
         """
         pass
@@ -66,7 +70,7 @@ class Market(ABC):
         pass
 
     @abstractmethod
-    def convert_freq(self, freq):
+    def translate_period(self, freq):
         """ Convert given market string interval into valid Pandas `DateOffset` value
 
         References:

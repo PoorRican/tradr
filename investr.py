@@ -1,5 +1,5 @@
-from markets.Market import Market
-from strategies.Strategy import Strategy
+from core import market
+from strategies.strategy import Strategy
 
 
 class Investr(object):

@@ -6,44 +6,78 @@ from abc import ABC, abstractmethod
 import logging
 
 from models.trades import Trade, SuccessfulTrade, add_to_df, truncate
-from markets.Market import Market
+from core.market import Market
 from models.data import DATA_ROOT
 
 
 class Strategy(ABC):
-    """ Abstracted a trading strategy.
+    """ Abstract a trading strategy.
 
-    Performs computation necessary to determine when and how much to trade. Inherited instances should
-    define a profitable trade, when and how many trades of a certain type should be executed,
-    and the amount of an asset to trade at a single time. Strategies should also determine a minimum amount of
-    an asset to hold.
+        Performs computation necessary to determine when and how much to trade. Inherited instances should
+        define a profitable trade, when and how many trades of a certain type should be executed,
+        and the amount of an asset to trade at a single time. Strategies should also determine a minimum amount of
+        an asset to hold. In essence, `Strategy` controls the trading process which is ~currently~ synchronous and
+        occurs as follows:
 
-    To determine the fitness and performance of the trading strategy, reporting functions show the total amount of
-    assets and fiat accrued. This can be used in active implementations as well as during backtesting.
+            -   `process()` calls `determine_position` which determines what action should be taken, called `position`.
+                The outcome of `process()` returns a boolean value.
+            -   if `position` is "truthy", it contains values `side` (type of action to be taken), and `extrema` (the
+                point in the time-series responsible for initiating a `signal`).
+            -   If an action has already not been executed regarding the given `extrema`, either `_buy()` or `_sell()`
+                are called, dependent on the value of `side`.
+            -   Both `_buy()/_sell()` call `_add_order()`. Rate, and amount are determined in `_add_order()`.
+            -   `add_order()` calls `market.place_order()` with a `Trade` as an argument to interact with the market.
+                If order is accepted by the market, it is converted to a `SuccessfulTrade`, otherwise becomes `False`
+                and the result is passed up. Note that `process()` returns a boolean regardless of the outcome.
 
-    The buy process happens in the following way:
-        - `process()` calls `determine_position` which determines what action should be taken, called `position`
-        - if `position` is "truthy", it contains values `side` (type of action to be taken), and `extrema` (the point
-            in the time-series to which an action is being taken for).
-        - If an action has already not been executed regarding the given `extrema`, either `_buy()` or `_sell()`
-            are called, dependent on the value of `side`.
-        - Both `_buy()` and `_sell()` call `_calc_rate`, `_calc_amount` and `add_order`.
-        - `add_order()` calls `market.place_order()` , who communicates with market API
-
-    Attributes
-        orders: history of orders performed by this strategy. Timestamps of extrema are used as indexes.
-        starting: starting amount of fiat currency
-        market: reference to `Market` object
+        To determine the fitness and performance of the trading strategy, reporting functions show the total amount of
+        assets and fiat accrued. This can be used in active implementations as well as during backtesting.
     """
-    name = 'base'
+    name: str = 'base'
+    """ Name of strategy. """
 
-    def __init__(self, starting_fiat: float, market: Market):
+    def __init__(self, starting: float, market: Market):
         self.orders = SuccessfulTrade.container()
-        self.failed_orders = Trade.container()
+        """ History of successful orders performed by this strategy. Timestamps of extrema are used as indexes.
+        
+        Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
+        is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
+        both rigidity and convenience.
+        
+        Notes:
+            Columns and dtypes should be identical to those of `SuccessfulTrade`
+        """
 
-        self.starting = starting_fiat
+        self.failed_orders = Trade.container()
+        """ History of orders that were not accepted by the market.
+        
+        Could be used to:
+            - Debug
+            - Test performance of computational trading methods (ie: `_calc_rate`, and related)
+            - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
+        """
+
+        self.starting = starting
+        """ Starting amount of fiat currency.
+            
+            Inherited classes should implement risk calculation using this. Risk calculation can consist of using this
+            value to initially begin trading fractions of this number (as to not to leave too many positions exposed and
+            to remain flexible with trade type alternation). Then as gains are realized, `fraction` and `amount`
+            parametric attributes would adjust to maintain similar risk.
+
+        """
 
         self.market = market
+        """Reference to `Market` object.
+        
+        Notes:        
+        
+            -   Interchangeability and Concurrency:
+            
+                Instances of both `Strategy` and `Market` are interchangeable at any time and would only be hard-linked
+                for when there are un-executed trades on-the-books. This leaves room for multithreading and concurrency
+                between multiple instances of both `Strategy` and `Market`.
+        """
 
         self.load()
 
@@ -70,7 +104,7 @@ class Strategy(ABC):
         assert last_trade['side'] != side
 
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
-        return gain - self.market.calc_fee()
+        return gain - self.market.get_fee()
 
     def _post_sale(self, trade: SuccessfulTrade):
         """ Post sale processing of trade before adding to local container. """
@@ -92,13 +126,13 @@ class Strategy(ABC):
         """
         amount = self._calc_amount(extrema, side)
         rate = self._calc_rate(extrema, side)
-        trade = Trade(amount, rate, side)
+        trade: Trade = Trade(amount, rate, side)
 
-        response = self.market.place_order(trade)
-        if response:
-            self._post_sale(response)
-            add_to_df(self, 'orders', extrema, response)
-            return response
+        successful: SuccessfulTrade = self.market.place_order(trade)
+        if successful:
+            self._post_sale(successful)
+            add_to_df(self, 'orders', extrema, successful)
+            return successful
         else:
             add_to_df(self, 'failed_orders', extrema, trade)
             return False

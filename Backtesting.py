@@ -1,9 +1,11 @@
-""" Backtesting.py
+""" Evaluate strategy performance, improve and debug strategies and models.
 
-Used for backtesting, improving and debugging strategies and models
+Notes:
+    TODO:
+        - Replace `Market.BASE_URL` values with test URLs
 """
 
-from strategies.Strategy import Strategy
+from strategies.strategy import Strategy
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Union
@@ -11,10 +13,13 @@ import logging
 
 
 class Backtesting(object):
-    """ Class to test strategies on existing ticker data.
+    """ Class to test strategies on existing candle data.
 
-    This plots market data and shows when a given strategy will
-    decide to buy, hold, or sell.
+    Plots market data and shows when a given strategy will decide to buy, hold, or sell.
+
+    Notes:
+        TODO:
+            - Implement a way to store and access historical values.
     """
     def __init__(self, strategy: Strategy):
         self.strategy = strategy
@@ -58,7 +63,7 @@ class Backtesting(object):
         print(msg)
 
         freq = self.market.data.attrs['freq']
-        freq = self.market.convert_freq(freq)
+        freq = self.market.translate_period(freq)
 
         frames = pd.date_range(start, end, freq=freq)
         for i, frame in enumerate(frames):

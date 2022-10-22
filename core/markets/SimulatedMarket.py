@@ -1,7 +1,6 @@
-from abc import ABC
 from typing import Union
 
-from markets.Market import Market
+from core.market import Market
 from models.trades import Trade, SuccessfulTrade
 
 
@@ -32,12 +31,12 @@ class SimulatedMarket(Market):
     def filename(self) -> str:
         return self.model.filename
 
-    def calc_fee(self):
-        return self.model.calc_fee()
+    def get_fee(self):
+        return self.model.get_fee()
 
     def update(self):
         self.model.update()
         self.data = self.model.data
 
-    def convert_freq(self, freq: str):
-        return self.model.convert_freq(freq)
+    def translate_period(self, freq: str):
+        return self.model.translate_period(freq)

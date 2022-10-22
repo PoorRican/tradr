@@ -1,6 +1,6 @@
 import pandas as pd
-from strategies.Strategy import Strategy
-from markets.Market import Market
+from strategies.strategy import Strategy
+from core import market
 from typing import Union, Tuple
 
 
@@ -23,8 +23,8 @@ class StaticAlternatingStrategy(Strategy):
 
     name = 'static_alternating'
 
-    def __init__(self, starting_fiat: float, amount: float, threshold: float, market: Market):
-        super().__init__(starting_fiat, market)
+    def __init__(self, starting: float, amount: float, threshold: float, market: Market):
+        super().__init__(starting, market)
 
         self.amount = amount
         self.threshold = threshold
