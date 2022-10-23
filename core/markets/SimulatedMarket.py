@@ -12,11 +12,12 @@ class SimulatedMarket(Market):
         - Only accept trade 50% of the time. This adds realism to simulation.
     """
 
-    def __init__(self, model: Market):
+    def __init__(self, model: Market = None):
         super().__init__()
 
-        self.model = model
-        self.update()
+        if model:
+            self.model = model
+            self.update()
         self.orders = 0
 
     def _convert(self, trade: Trade, response: dict = None,) -> 'SuccessfulTrade':

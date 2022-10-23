@@ -86,7 +86,7 @@ class GeminiMarket(Market):
             logging.warning("`MarketAPI.calc_fee` has no value for `fee`")
             return 0.35
 
-    def get_candles(self, freq: Optional[str]) -> pd.DataFrame:
+    def get_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
         """ Retrieve candle data.
 
         Ticker frequency is determined by `self.freq` and notated on return type via the `DataFrame.attrs` convention.
