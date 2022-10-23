@@ -5,7 +5,8 @@ from datetime import datetime
 import pandas as pd
 
 from strategies.strategy import Strategy
-from models.trades import SuccessfulTrade
+from models.signals import Signal
+from models.trades import SuccessfulTrade, Side
 
 
 class OscillatingStrategy(Strategy, ABC):
@@ -17,18 +18,18 @@ class OscillatingStrategy(Strategy, ABC):
         self.timeout = timeout
 
     @abstractmethod
-    def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         pass
 
     @abstractmethod
-    def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
         pass
 
     @abstractmethod
     def _develop_signals(self, point: pd.Timestamp) -> pd.DataFrame:
         pass
 
-    def _oscillation(self, signal: Union['False', str]) -> bool:
+    def _oscillation(self, signal: Signal) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.
 
         Both the first order and `timeout` are taken into account.
@@ -44,11 +45,11 @@ class OscillatingStrategy(Strategy, ABC):
         """
         if self.orders.empty:
             # force buy for first trade
-            return signal == 'buy'
+            return signal == Signal.BUY
 
         if signal:
             last_order = self.orders.iloc[-1]
-            if last_order['side'] == signal == 'buy':
+            if last_order['side'] == signal == Signal.BUY:
                 timeout = self._check_timeout()
                 if timeout:
                     row = pd.Series([last_order['id']])
@@ -57,34 +58,35 @@ class OscillatingStrategy(Strategy, ABC):
                 return timeout
             return last_order.side != signal
 
-        return signal
+        return False
 
     def _post_sale(self, trade: SuccessfulTrade):
         """ Clean `unpaired_buys` after successful sale.
-        Assumption is that `trade.related` will be populated. """
+        """
 
-        if trade.side == 'sell':
+        if trade.side == Side.SELL:
             unpaired = self._check_unpaired(trade.rate)
             if not unpaired.empty:
                 matching = self.unpaired_buys.isin(unpaired['id'].values)
                 indices = self.unpaired_buys.loc[matching].index
                 self.unpaired_buys.drop(index=indices, inplace=True)
 
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
+    def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[Side, 'pd.Timestamp'], 'False']:
         """ Determine trade execution and type.
 
         Oscillation of trade types is executed here. Duplicate trade type is not returned if a new signal is
         generated.
         """
-        self.indicators = self._develop_signals(point)
+        self.indicators = self._develop_signals(extrema)
 
-        if point:
-            extrema = self.market.data.loc[point]
+        if extrema:
+            extrema = self.market.data.loc[extrema]
         else:
             extrema = self.market.data.iloc[-1]
 
         signal = self._check_signals(extrema)
         if self._oscillation(signal):
+            signal = Side(signal)
             rate = self._calc_rate(extrema.name, signal)
             amount = self._calc_amount(extrema.name, signal)
             if self._is_profitable(amount, rate, signal):
@@ -93,11 +95,11 @@ class OscillatingStrategy(Strategy, ABC):
         return False
 
     @abstractmethod
-    def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         pass
 
     @abstractmethod
-    def _check_signals(self, extrema: pd.DataFrame) -> Union[str, 'False']:
+    def _check_signals(self, extrema: pd.DataFrame) -> Signal:
         pass
 
     def get_unpaired_orders(self) -> pd.DataFrame:

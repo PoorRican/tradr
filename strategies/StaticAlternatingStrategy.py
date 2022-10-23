@@ -2,6 +2,7 @@ import pandas as pd
 from strategies.strategy import Strategy
 from core import Market
 from typing import Union, Tuple
+from models.trades import Side
 
 
 class StaticAlternatingStrategy(Strategy):
@@ -29,11 +30,11 @@ class StaticAlternatingStrategy(Strategy):
         self.amount = amount
         self.threshold = threshold
 
-    def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """
         Rate is calculated by open, close, and high or low price.
 
-        When buying, the third value is market low, when selling, market high price is used
+        When buying, the third value is market high, when selling, market low price is used
         as the third value for averaging.
 
         Args:
@@ -43,19 +44,19 @@ class StaticAlternatingStrategy(Strategy):
         Returns:
             rate to use for trade
         """
-        if side == 'buy':
-            third = 'low'
-        elif side == 'sell':
+        if side is Side.BUY:
             third = 'high'
+        elif side is Side.SELL:
+            third = 'low'
         else:
-            raise ValueError('Invalid value for `side`')
+            raise ValueError('Invalid side')
 
         return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
-    def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         return self.amount
 
-    def _is_profitable(self, amount: float, rate: float, side: str, extrema: Union[pd.Timestamp, str] = None) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: Side, extrema: Union[pd.Timestamp, str] = None) -> bool:
         """ Profitability is defined as any trade where net price exceeds a threshold.
 
         Examples:
@@ -73,8 +74,8 @@ class StaticAlternatingStrategy(Strategy):
             side: type of trade: 'buy'/'sell'
             extrema: Used during backtesting
         """
-        assert side in ('buy', 'sell')
-        if side == 'sell':
+        assert side in (Side.BUY, Side.SELL)
+        if side == Side.SELL:
             return self._calc_profit(amount, rate, side) >= self.threshold
         else:
             if extrema:
@@ -96,14 +97,14 @@ class StaticAlternatingStrategy(Strategy):
         """
         return NotImplemented
 
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'],
+    def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'],
                                                                        'False']:
         """ Use market data to decide to execute buy/sell.
 
         The algorithm attempts to see if the opposite order type is profitable.
 
         Args:
-            point: Used to simulate time during backtesting.
+            extrema: Used to simulate time during backtesting.
 
         Returns:
             If trade should be made, returns a tuple with decision ('buy'/'sell') and extrema.
@@ -111,18 +112,17 @@ class StaticAlternatingStrategy(Strategy):
             Otherwise, `False` is returned.
         """
         if self.orders.empty:
-            side = 'buy'
+            side = Side.BUY
         else:
-            assert self.orders.iloc[-1].side in ('buy', 'sell')
+            last_order = self.orders.iloc[-1]
+            assert last_order.side in (Side.BUY, Side.SELL)
 
-            if self.orders.iloc[-1].side == 'sell':
-                side = 'buy'
+            if self.orders.iloc[-1].side == Side.SELL:
+                side = Side.BUY
             else:
-                side = 'sell'
+                side = Side.SELL
 
-        if point:
-            extrema = point
-        else:
+        if not extrema:
             extrema = self.market.data.iloc[-1].name
 
         rate = self._calc_rate(extrema, side)

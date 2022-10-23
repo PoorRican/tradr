@@ -7,8 +7,16 @@ Notes:
 """
 
 from dataclasses import dataclass, field, fields
+from enum import IntEnum, unique
 import pandas as pd
 from typing import Union, Any
+
+
+@unique
+class Side(IntEnum):
+    """ Enumerates order types as buy/sell """
+    BUY = 1
+    SELL = -1
 
 
 @dataclass
@@ -23,7 +31,7 @@ class Trade:
     """
     amt: float
     rate: float
-    side: str
+    side: Side
     cost: float = field(init=False)
     """NOTE: this is not to be given as an argument to `__init__()` """
 
@@ -33,7 +41,7 @@ class Trade:
         Notes:
             This occurs after `__init__()` has been run.
         """
-        assert self.side in ('buy', 'sell')
+        assert self.side.name in ('BUY', 'SELL')
         self.cost = truncate(self.amt * self.rate, 2)
 
     @classmethod

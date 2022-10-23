@@ -5,7 +5,7 @@ from typing import Tuple, Union
 from abc import ABC, abstractmethod
 import logging
 
-from models.trades import Trade, SuccessfulTrade, add_to_df, truncate
+from models.trades import Trade, SuccessfulTrade, add_to_df, truncate, Side
 from core.market import Market
 from models.data import DATA_ROOT
 
@@ -97,7 +97,7 @@ class Strategy(ABC):
         """ Store order data """
         self.orders.to_pickle(self.filename)
 
-    def _calc_profit(self, amount: float, rate: float, side: str) -> float:
+    def _calc_profit(self, amount: float, rate: float, side: Side) -> float:
         """ Calculates profit of a sale.
         """
         last_trade = self.orders.iloc[-1]
@@ -110,7 +110,7 @@ class Strategy(ABC):
         """ Post sale processing of trade before adding to local container. """
         pass
 
-    def _add_order(self, extrema: pd.Timestamp, side: str) -> Union['SuccessfulTrade', 'False']:
+    def _add_order(self, extrema: pd.Timestamp, side: Side) -> Union['SuccessfulTrade', 'False']:
         """ Create and send order to market, then store in history.
 
         Not all orders will post, so only orders that are executed (accepted by the market) are stored.
@@ -153,18 +153,18 @@ class Strategy(ABC):
 
         if position:
             side, extrema = position
-            assert side in ('buy', 'sell')
+            assert side in (Side.BUY, Side.SELL)
             try:
                 self.orders[extrema]                # has an order been placed for given extrema?
             except KeyError:
-                if side == 'buy':
+                if side == Side.BUY:
                     return self._buy(extrema)
                 else:
                     return self._sell(extrema)
         return False
 
     @abstractmethod
-    def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """ Calculate rate for trade.
 
         This method should return the same value for given parameters.
@@ -179,7 +179,7 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
-    def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         """ Calculate amount for trade.
 
         This method should return the same value for given parameters.
@@ -212,7 +212,7 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        accepted = self._add_order(extrema, 'buy')
+        accepted = self._add_order(extrema, Side.BUY)
         if accepted:
             logging.info(f"Buy order at {accepted.rate} was placed at {datetime.now()}")
         return bool(accepted)
@@ -236,13 +236,13 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        accepted = self._add_order(extrema, 'sell')
+        accepted = self._add_order(extrema, Side.SELL)
         if accepted:
             logging.info(f"Sell order at {accepted.rate} was placed at {datetime.now()}")
         return bool(accepted)
 
     @abstractmethod
-    def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
         """
         Determine if the given trade is profitable or not.
 
@@ -269,11 +269,11 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
+    def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
         """ Determine whether buy or sell order should be executed.
 
         Args:
-            point: Used in backtesting to simulate time
+            extrema: Used in backtesting to simulate time
 
         Returns:
             If a valid extrema is found, returns a tuple with decision ('buy'/'sell') and extrema.
@@ -286,8 +286,8 @@ class Strategy(ABC):
     def pnl(self) -> float:
         # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning
         #       the number of unpaired orders and unrealized gain.
-        buy_orders = self.orders[self.orders['side'] == 'buy']
-        sell_orders = self.orders[self.orders['side'] == 'sell']
+        buy_orders = self.orders[self.orders['side'] == Side.BUY]
+        sell_orders = self.orders[self.orders['side'] == Side.SELL]
 
         buy_cost = buy_orders['cost'].sum()
         sell_cost = sell_orders['cost'].sum()

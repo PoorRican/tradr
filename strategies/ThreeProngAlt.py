@@ -1,7 +1,10 @@
 import pandas as pd
-from strategies.OscillatingStrategy import OscillatingStrategy
-from typing import Union, Tuple
 from talib import STOCHRSI, MACD, BBANDS
+from typing import Union, Tuple
+
+from models.signals import Signal
+from models.trades import Side
+from strategies.OscillatingStrategy import OscillatingStrategy
 
 
 class ThreeProngAlt(OscillatingStrategy):
@@ -51,7 +54,7 @@ class ThreeProngAlt(OscillatingStrategy):
                                                 'macd', 'macdsignal', 'macdhist',
                                                 'fastk', 'fastd'])
 
-    def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """
         Rate is calculated by open, close, and high or low price.
 
@@ -70,43 +73,43 @@ class ThreeProngAlt(OscillatingStrategy):
         Todo:
             - Integrate weights, so that extreme values do not skew
         """
-        assert side in ('buy', 'sell')
-        if side == 'buy':
+        assert side in (Side.BUY, Side.SELL)
+        if side == Side.BUY:
             third = 'high'
         else:
             third = 'low'
 
         return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
-    def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         if self.orders.empty:
-            assert side == 'buy'
-            last_order = {'amt': 0, 'side': 'sell'}
+            assert side == Side.BUY
+            last_order = {'amt': 0, 'side': Side.SELL}
         else:
             last_order = self.orders.iloc[-1]
 
         rate = self._calc_rate(extrema, side)
-        if side == 'sell':
+        if side == Side.SELL:
             other = self._check_unpaired(rate)
             return last_order['amt'] + other['amt'].sum()
-        if side == 'buy':
+        if side == Side.BUY:
             # TODO: amount should increase as total gain exceeds 125% of `starting`
             # TODO: amount bought should not exceed amount of starting capital and should
             #   take into account unpaired buy trades.
             return self.starting / rate
 
-    def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
 
         Always buy according to signals.
         """
-        assert side in ('buy', 'sell')
-        if side == 'buy':
+        assert side in (Side.BUY, Side.SELL)
+        if side == Side.BUY:
             return True
         else:
             return self._calc_profit(amount, rate, side) >= self.threshold
 
-    def _check_bb(self, rate: float) -> Union[str, 'False']:
+    def _check_bb(self, rate: float) -> Signal:
         """ Check that price is close to or beyond edge of Bollinger Bands
 
         Args:
@@ -127,13 +130,13 @@ class ThreeProngAlt(OscillatingStrategy):
         sell += frame['middleband']
 
         if rate <= buy:
-            return 'buy'
+            return Signal.BUY
         elif rate >= sell:
-            return 'sell'
+            return Signal.SELL
         else:
-            return False
+            return Signal.HOLD
 
-    def _check_macd(self) -> Union[str, 'False']:
+    def _check_macd(self) -> Signal:
         """ Get signal interpretation from MACD indicator
 
         Returns:
@@ -141,13 +144,13 @@ class ThreeProngAlt(OscillatingStrategy):
          """
         frame = self.indicators.iloc[-1]['macdhist']
         if frame < 0:
-            return 'buy'
+            return Signal.BUY
         elif frame > 0:
-            return 'sell'
+            return Signal.SELL
         else:
-            return False
+            return Signal.HOLD
 
-    def _check_stochrsi(self) -> Union[str, 'False']:
+    def _check_stochrsi(self) -> Signal:
         """ Get signal from Stochastic RSI.
 
         Returns:
@@ -157,11 +160,11 @@ class ThreeProngAlt(OscillatingStrategy):
         """
         frame = self.indicators.iloc[-1][['fastk', 'fastd']]
         if frame['fastk'] < 20 and 20 > frame['fastd'] > frame['fastk']:
-            return 'buy'
+            return Signal.BUY
         elif frame['fastk'] > 80 and 80 < frame['fastd'] < frame['fastk']:
-            return 'sell'
+            return Signal.SELL
         else:
-            return False
+            return Signal.HOLD
 
     def _develop_signals(self, point: pd.Timestamp = None) -> pd.DataFrame:
         d = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
@@ -178,7 +181,7 @@ class ThreeProngAlt(OscillatingStrategy):
 
         return d
 
-    def _check_signals(self, extrema: pd.DataFrame) -> Union[str, 'False']:
+    def _check_signals(self, extrema: pd.DataFrame) -> Signal:
         signals = (
             self._check_stochrsi(),
             self._check_bb(extrema['close']),
@@ -188,4 +191,4 @@ class ThreeProngAlt(OscillatingStrategy):
         if signals[0] == signals[1] == signals[2]:
             return signals[0]
 
-        return False
+        return Signal.HOLD
