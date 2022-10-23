@@ -74,7 +74,7 @@ def containerize(class_or_instance: Any) -> pd.DataFrame:
     return pd.DataFrame(columns=[i.name for i in fields(class_or_instance)])
 
 
-def add_to_df(__object: object, container: str, extrema: Union['pd.Timestamp', str],
+def add_to_df(__object: object, container: str, extrema: Union['pd.Timestamp', str, int],
               instance: Any, force: bool = False):
     """ Insert dataclass instance into time-series.
 
@@ -93,8 +93,8 @@ def add_to_df(__object: object, container: str, extrema: Union['pd.Timestamp', s
             name of container to insert
 
         extrema:
-            Index location to insert `instance`. If index already exists, `force` performs the insertion
-            regardless, causing a duplicate.
+            Time-series or numeric index to insert `instance`. If index already exists, `force`
+            performs the insertion regardless, causing a duplicate. Otherwise, an error is made.
 
         instance:
             Dataclass instance to insert into `container`. Can be anytype as long as it is compatible
@@ -104,12 +104,14 @@ def add_to_df(__object: object, container: str, extrema: Union['pd.Timestamp', s
             Flag to duplicate index. Data would not be replaced, but a duplicate index would exist
             pointing to two discrete values.
     """
-    assert type(extrema) in (pd.Timestamp, str)
+    assert type(extrema) in (pd.Timestamp, str, int)
     if type(extrema) == str:
         extrema = pd.Timestamp(extrema)
 
     df = getattr(__object, container)
-    if extrema not in df.index or force:
+    if extrema in df.index and not force:
+        raise IndexError('duplicate index')
+    else:
         row = pd.DataFrame([instance], index=[extrema])
         setattr(__object, container, pd.concat([df, row]))
 

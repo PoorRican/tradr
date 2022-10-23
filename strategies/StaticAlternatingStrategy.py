@@ -1,6 +1,6 @@
 import pandas as pd
 from strategies.strategy import Strategy
-from core import market
+from core import Market
 from typing import Union, Tuple
 
 

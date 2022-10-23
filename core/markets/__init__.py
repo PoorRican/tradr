@@ -7,5 +7,6 @@ Notes:
     improved *by not accepting all orders* to more accurately model real world `Strategy` performance.
 """
 
+from core.market import Market
 from core.markets.GeminiMarket import GeminiMarket
 from core.markets.SimulatedMarket import SimulatedMarket
