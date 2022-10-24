@@ -5,10 +5,11 @@ import json
 import time
 from os import path
 from typing import Union, Optional
-
 import pandas as pd
 import requests
 import logging
+import urllib3
+import warnings
 
 from models.data import json_to_df, DATA_ROOT
 from core.market import Market
@@ -51,7 +52,6 @@ class GeminiMarket(Market):
         self.freq = time_frame
         self.root = root
 
-        self.load()
         self.update()
         self.save()
 
@@ -171,12 +171,19 @@ class GeminiMarket(Market):
     def update(self) -> None:
         """ Updates `data` with recent candle data """
         # self.data = combine_data(self.data, self.get_candles())
-        self.data = self.get_candles()
+        try:
+            self.data = self.get_candles()
+        except urllib3.HTTPSConnectionPool as e:
+            logging.error(f'Connection error during `Market.update(): {e}')
+            warnings.warn("Connection error")
+            self.load(ignore=False)
 
-    def load(self):
+    def load(self, ignore: bool = True):
         try:
             self.data = pd.read_pickle(self.filename)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
+            if not ignore:
+                raise e
             pass
 
     def save(self):
