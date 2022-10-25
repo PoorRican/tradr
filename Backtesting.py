@@ -22,7 +22,7 @@ class Backtesting(object):
             - Implement a way to store and access historical values.
     """
     def __init__(self, strategy: Strategy):
-        self.strategy = strategy
+        self.strategy: Strategy = strategy
 
     @property
     def market(self):
@@ -37,7 +37,7 @@ class Backtesting(object):
                 completion every 10%.
         """
         progress = self._progress(current)
-        if progress > 0 and progress % interval is 0:
+        if progress > 0 and progress % interval == 0:
             print("%d completed" % progress)
 
     def _progress(self, current: int):
@@ -65,6 +65,7 @@ class Backtesting(object):
         freq = self.market.data.attrs['freq']
         freq = self.market.translate_period(freq)
 
+        self.strategy.develop_signals()
         frames = pd.date_range(start, end, freq=freq)
         for i, frame in enumerate(frames):
             # TODO: enable multithreading

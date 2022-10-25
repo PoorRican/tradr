@@ -1,21 +1,21 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Sequence, Generic
 from abc import ABC, abstractmethod
 from datetime import datetime
-
 import pandas as pd
 
 from strategies.strategy import Strategy
-from models.signals import Signal
+from models.signals import Signal, IndicatorContainer, INDICATOR
 from models.trades import SuccessfulTrade, Side
 
 
 class OscillatingStrategy(Strategy, ABC):
-    def __init__(self, *args, timeout='6h', **kwargs):
+    def __init__(self, *args, indicators: Sequence[INDICATOR], timeout='6h', **kwargs):
         super().__init__(*args, **kwargs)
 
         self.unpaired_buys = pd.Series(name='unpaired buy id\'s', dtype='int32')
 
         self.timeout = timeout
+        self.indicators = IndicatorContainer(indicators)
 
     @abstractmethod
     def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
@@ -23,10 +23,6 @@ class OscillatingStrategy(Strategy, ABC):
 
     @abstractmethod
     def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
-        pass
-
-    @abstractmethod
-    def _develop_signals(self, point: pd.Timestamp) -> pd.DataFrame:
         pass
 
     def _oscillation(self, signal: Signal) -> bool:
@@ -71,35 +67,30 @@ class OscillatingStrategy(Strategy, ABC):
                 indices = self.unpaired_buys.loc[matching].index
                 self.unpaired_buys.drop(index=indices, inplace=True)
 
-    def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[Side, 'pd.Timestamp'], 'False']:
+    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[Side, 'pd.Timestamp'], 'False']:
         """ Determine trade execution and type.
 
         Oscillation of trade types is executed here. Duplicate trade type is not returned if a new signal is
         generated.
+
+        Notes:
+            `self.indicators.develop()` needs to be called beforehand.
         """
-        self.indicators = self._develop_signals(extrema)
+        if not point:
+            point = self.market.data.iloc[-1].name
 
-        if extrema:
-            extrema = self.market.data.loc[extrema]
-        else:
-            extrema = self.market.data.iloc[-1]
-
-        signal = self._check_signals(extrema)
+        signal = self.indicators.check(self.market.data, point)
         if self._oscillation(signal):
             signal = Side(signal)
-            rate = self._calc_rate(extrema.name, signal)
-            amount = self._calc_amount(extrema.name, signal)
+            rate = self._calc_rate(point, signal)
+            amount = self._calc_amount(point, signal)
             if self._is_profitable(amount, rate, signal):
-                return signal, extrema.name
+                return signal, point
 
         return False
 
     @abstractmethod
     def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
-        pass
-
-    @abstractmethod
-    def _check_signals(self, extrema: pd.DataFrame) -> Signal:
         pass
 
     def get_unpaired_orders(self) -> pd.DataFrame:
@@ -142,4 +133,3 @@ class OscillatingStrategy(Strategy, ABC):
 
             return diff > period
         return False
-

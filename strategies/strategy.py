@@ -256,17 +256,9 @@ class Strategy(ABC):
         """
         pass
 
-    @abstractmethod
-    def _develop_signals(self, point: pd.Timestamp) -> pd.DataFrame:
-        """ Use available data to update indicators.
-
-        Args:
-            point: Used in backtesting to simulate time
-
-        Returns:
-            Indicator/signal data
-        """
-        pass
+    def develop_signals(self):
+        if hasattr(self, 'indicators'):
+            self.indicators.develop(self.market.data)
 
     @abstractmethod
     def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:

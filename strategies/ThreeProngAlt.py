@@ -1,8 +1,7 @@
 import pandas as pd
-from talib import STOCHRSI, MACD, BBANDS
-from typing import Union, Tuple
+from typing import Sequence, Generic
 
-from models.signals import Signal
+from models.signals import Signal, MACDRow, BBANDSRow, STOCHRSIRow, INDICATOR
 from models.trades import Side
 from strategies.OscillatingStrategy import OscillatingStrategy
 
@@ -46,13 +45,10 @@ class ThreeProngAlt(OscillatingStrategy):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        super().__init__(*args, **kwargs)
+        _indicators: Sequence[INDICATOR, ...] = [BBANDSRow, MACDRow, STOCHRSIRow]
+        super().__init__(indicators=_indicators, *args, **kwargs)
 
         self.threshold = threshold
-
-        self.indicators = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
-                                                'macd', 'macdsignal', 'macdhist',
-                                                'fastk', 'fastd'])
 
     def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """
@@ -108,87 +104,3 @@ class ThreeProngAlt(OscillatingStrategy):
             return True
         else:
             return self._calc_profit(amount, rate, side) >= self.threshold
-
-    def _check_bb(self, rate: float) -> Signal:
-        """ Check that price is close to or beyond edge of Bollinger Bands
-
-        Args:
-            rate: Current ticker price
-
-        Returns:
-            `buy`/`sell`: Signal interpreted from Bollinger Bands.
-        """
-
-        frame = self.indicators.iloc[-1][['lowerband', 'middleband', 'upperband']]
-        buy = frame['middleband'] - frame['lowerband']
-        sell = frame['upperband'] - frame['middleband']
-
-        buy *= .5
-        sell *= .5
-
-        buy += frame['lowerband']
-        sell += frame['middleband']
-
-        if rate <= buy:
-            return Signal.BUY
-        elif rate >= sell:
-            return Signal.SELL
-        else:
-            return Signal.HOLD
-
-    def _check_macd(self) -> Signal:
-        """ Get signal interpretation from MACD indicator
-
-        Returns:
-            `buy`/`sell`: Signal interpreted from Bollinger Bands.
-         """
-        frame = self.indicators.iloc[-1]['macdhist']
-        if frame < 0:
-            return Signal.BUY
-        elif frame > 0:
-            return Signal.SELL
-        else:
-            return Signal.HOLD
-
-    def _check_stochrsi(self) -> Signal:
-        """ Get signal from Stochastic RSI.
-
-        Returns:
-            'buy': if K and D are below 20 with K < D
-            'sell': if K and D are above 80 with K > D
-            Otherwise, `False` is returned
-        """
-        frame = self.indicators.iloc[-1][['fastk', 'fastd']]
-        if frame['fastk'] < 20 and 20 > frame['fastd'] > frame['fastk']:
-            return Signal.BUY
-        elif frame['fastk'] > 80 and 80 < frame['fastd'] < frame['fastk']:
-            return Signal.SELL
-        else:
-            return Signal.HOLD
-
-    def _develop_signals(self, point: pd.Timestamp = None) -> pd.DataFrame:
-        d = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
-                                  'macd', 'macdsignal', 'macdhist',
-                                  'fastk', 'fastd'])
-        if point:
-            data = self.market.data['close'].loc[:point]
-        else:
-            data = self.market.data['close']
-
-        d['upperband'], d['middleband'], d['lowerband'] = BBANDS(data, 20)
-        d['macd'], d['macdsignal'], d['macdhist'] = MACD(data, 6, 26, 9)
-        d['fastk'], d['fastd'] = STOCHRSI(data, 14, 3, 3)
-
-        return d
-
-    def _check_signals(self, extrema: pd.DataFrame) -> Signal:
-        signals = (
-            self._check_stochrsi(),
-            self._check_bb(extrema['close']),
-            self._check_macd(),
-        )
-
-        if signals[0] == signals[1] == signals[2]:
-            return signals[0]
-
-        return Signal.HOLD
