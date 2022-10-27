@@ -7,6 +7,22 @@ from talib import BBANDS, STOCHRSI, MACD
 
 
 class Signal(IntEnum):
+    """ Abstracts `Indicator` return output as a trinary decision.
+
+    The available decisions are 'buy', 'hold', and 'sell'. In addition, 'buy'/'sell' decisions
+    can be converted to a value of `Side`. Both discrete objects are needed to explicitly abstract
+    indicator output and trade type. Boilerplate code is then reduced when checking signal value.
+
+    Example:
+        Convert value to `Side`:
+            >>> signal = Side(signal)
+
+        Check signal value:
+            >>> if Signal:
+            >>>     pass    # handle buy/sell
+            >>> else:
+            >>>     pass    # handle hold
+    """
     SELL = -1
     HOLD = 0
     BUY = 1
@@ -14,9 +30,17 @@ class Signal(IntEnum):
 
 @dataclass
 class Indicator:
+    """ Abstracts statistical functions and encapsulates logic to derive discrete values.
+    """
     _function: ClassVar[Callable]
-    _parameters: ClassVar[Dict]
-    _source: ClassVar[Dict]
+    """ indicator function that is passed a single column of candle data, and ambiguous keyword arguments. """
+
+    _parameters: ClassVar[Dict] = {}
+    """ Ambiguous parameters for `_function` """
+
+    _source: ClassVar[Dict] = 'close'
+    """ Stores which column of input candle data to use.
+    """
 
     @classmethod
     def columns(cls) -> List[str]:
@@ -33,6 +57,7 @@ class Indicator:
 INDICATOR = TypeVar('INDICATOR', bound=Indicator)
 
 
+# noinspection PyUnusedLocal
 @dataclass
 class MACDRow(Indicator):
     _function = MACD
@@ -54,6 +79,7 @@ class MACDRow(Indicator):
             return Signal.HOLD
 
 
+# noinspection PyUnusedLocal
 @dataclass
 class BBANDSRow(Indicator):
     _function = BBANDS
@@ -84,6 +110,7 @@ class BBANDSRow(Indicator):
             return Signal.HOLD
 
 
+# noinspection PyUnusedLocal
 @dataclass
 class STOCHRSIRow(Indicator):
     _function = STOCHRSI
@@ -104,14 +131,23 @@ class STOCHRSIRow(Indicator):
 
 
 class IndicatorContainer(UserList[INDICATOR]):
+    """ Container that abstracts concurrently using multiple indicators to derive a discrete decision.
+
+    This can be used in `Strategy` to direct trade decisions, or can be used to indicate trends."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.graph: pd.DataFrame = self.container()
+        """ Stores numeric indicator data for all bundled `Indicator` classes.
+        
+        Initially starts off as empty row with columns
+        """
 
     def container(self, index: Optional[pd.Index] = None) -> pd.DataFrame:
         """ Generate and return an empty `DataFrame` with indicator columns.
 
-        DataFrame should be re-initialized by this function if indicators are ever added or removed.
+        Notes:
+            When indicators are ever added or removed, DataFrame shall be re-initialized by this function.
         """
         cols = []
         for cls in self.data:
@@ -135,6 +171,19 @@ class IndicatorContainer(UserList[INDICATOR]):
         self.graph = df
 
     def check(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
+        """ Infer signals from indicators.
+
+        Notes:
+            Processing and computation of indicator data is handled by `self.develop()` and shall therefore
+            not be called within this function.
+
+        Args:
+            data: Market data. Passed for a reference for indicators to use.
+            point: Point in time. Used during backtesting. Defaults to last frame in `self.graph`
+
+        Returns:
+            Trade signal based on consensus from indicators.
+        """
         # TODO: check that market data is not too ahead of computed indicators
         if point:
             frame = self.graph.loc[point]
