@@ -15,6 +15,7 @@ class Signal(IntEnum):
 
     Example:
         Convert value to `Side`:
+            >>> from models.trades import Side
             >>> signal = Side(signal)
 
         Check signal value:
@@ -192,6 +193,7 @@ class IndicatorContainer(UserList[INDICATOR]):
 
         kwargs = {'rate': data['close'].loc[frame.name]}
         signals = [indicator.check(frame, **kwargs) for indicator in self.data]
+        # TODO: use dynamic number of array length
         if signals[0] == signals[1] == signals[2]:
             return signals[0]
 

@@ -37,23 +37,32 @@ class GeminiMarket(Market):
     valid_freqs: tuple[str, ...] = ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day')
     BASE_URL: str = "https://api.gemini.com"
 
-    def __init__(self, api_key: str, api_secret: str, time_frame: str = '15m', root: str = DATA_ROOT):
+    def __init__(self, api_key: str = None, api_secret: str = None, time_frame: str = '15m',
+                 root: str = DATA_ROOT, update=True):
         """
         Args:
             api_key: Gemini API key
             api_secret: Gemini API secret
             time_frame: candle frequency
             root: root directory to store candle data
+            update: flag to disable fetching active market data. Reads any cached file by default.
         """
         super().__init__()
         assert time_frame in self.valid_freqs
-        self.api_key = api_key
-        self.api_secret = api_secret.encode()
+
+        if api_key and api_secret:
+            self.api_key = api_key
+            self.api_secret = api_secret.encode()
+
         self.freq = time_frame
         self.root = root
 
-        self.update()
-        self.save()
+        if update:
+            self.update()
+            self.save()
+        else:
+            self.load()
+        # TODO: raise an error if there is no cache
 
     def get_fee(self) -> float:
         """ Retrieve current transaction fee.
@@ -289,7 +298,8 @@ class GeminiMarket(Market):
             or any other `DateOffset`.
 
         References:
-            View Pandas documentation for a list of valid values: https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#timeseries-offset-aliases
+            View Pandas documentation for a list of valid values:
+            https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#timeseries-offset-aliases
 
         Examples:
             Gemini uses the string `15m` to denote an interval of 15 minutes, but
