@@ -6,7 +6,7 @@ __pycache__/
 *.py[co]
 
 *.log
-data/*
+*.pkl
 .old.git
 
 # secrets
