@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from enum import IntEnum
 from dataclasses import dataclass, fields
 from typing import List, ClassVar, Callable, Dict, TypeVar, NoReturn, Optional, Tuple
@@ -30,7 +31,7 @@ class Signal(IntEnum):
 
 
 @dataclass
-class Indicator:
+class Indicator(ABC):
     """ Abstracts statistical functions and encapsulates logic to derive discrete values.
     """
     _function: ClassVar[Callable]
@@ -54,6 +55,16 @@ class Indicator:
 
         return cls._function(data[cls._source], **params)
 
+    @abstractmethod
+    def check(self, *args, **kwargs):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def strength(self, *args, **kwargs) -> float:
+        """ Determine strength of Trend """
+        pass
+
 
 INDICATOR = TypeVar('INDICATOR', bound=Indicator)
 
@@ -71,6 +82,8 @@ class MACDRow(Indicator):
 
     @staticmethod
     def check(frame: pd.DataFrame, *args, **kwargs) -> Signal:
+        assert 'macdhist' in frame.columns
+
         _ = frame['macdhist']
         if _ < 0:
             return Signal.BUY
@@ -78,6 +91,10 @@ class MACDRow(Indicator):
             return Signal.SELL
         else:
             return Signal.HOLD
+
+    @staticmethod
+    def strength(frame: pd.DataFrame, *args, **kwargs) -> float:
+        return 1
 
 
 # noinspection PyUnusedLocal
@@ -110,6 +127,10 @@ class BBANDSRow(Indicator):
         else:
             return Signal.HOLD
 
+    @staticmethod
+    def strength(frame: pd.DataFrame, *args, **kwargs) -> float:
+        return 1
+
 
 # noinspection PyUnusedLocal
 @dataclass
@@ -130,6 +151,10 @@ class STOCHRSIRow(Indicator):
         else:
             return Signal.HOLD
 
+    @staticmethod
+    def strength(frame: pd.DataFrame, *args, **kwargs) -> float:
+        return 1
+
 
 class IndicatorContainer(UserList[INDICATOR]):
     """ Container that abstracts concurrently using multiple indicators to derive a discrete decision.
@@ -149,6 +174,11 @@ class IndicatorContainer(UserList[INDICATOR]):
 
         Notes:
             When indicators are ever added or removed, DataFrame shall be re-initialized by this function.
+
+        Args:
+            index:
+                Valid pandas index sequence. Since pandas cannot expand `DataFrame` objects, this argument _must_
+                be defined before any computation can be performed.
         """
         cols = []
         for cls in self.data:
@@ -161,7 +191,7 @@ class IndicatorContainer(UserList[INDICATOR]):
         `self.graph` is used to store all indicator data and should only be updated by this method.
 
         Args:
-            data: Candle data. Should be shortened if speed is an issue.
+            data: Candle data. Should be shortened (by not using older data) when speed becomes an issue
 
         """
         df = self.container(data.index)
@@ -179,8 +209,10 @@ class IndicatorContainer(UserList[INDICATOR]):
             not be called within this function.
 
         Args:
-            data: Market data. Passed for a reference for indicators to use.
-            point: Point in time. Used during backtesting. Defaults to last frame in `self.graph`
+            data:
+                Market data. Passed for a reference for indicators to use.
+            point:
+                Point in time. Used during backtesting. Defaults to last frame in `self.graph`
 
         Returns:
             Trade signal based on consensus from indicators.
