@@ -4,7 +4,7 @@ from math import floor
 
 import pandas as pd
 
-from models.trades import Trade, SuccessfulTrade, add_to_df
+from models.trades import Trade, SuccessfulTrade, add_to_df, Side
 
 
 class TestTrade(unittest.TestCase):
@@ -12,7 +12,7 @@ class TestTrade(unittest.TestCase):
         """ Test that attributes are properly calculated """
         amt = 2
         rate = 7
-        trade = Trade(amt, rate, 'buy')
+        trade = Trade(amt, rate, Side.BUY)
 
         self.assertEqual(trade.amt, amt, 'trade.amt incorrect')
         self.assertEqual(trade.rate, rate, 'trade.rate incorrect')
@@ -21,10 +21,10 @@ class TestTrade(unittest.TestCase):
     def test_attr_cost_init(self):
         """ Test that cost cannot be passed to `__init__()`"""
         with self.assertRaises(TypeError):
-            Trade(5, 5, 'buy', cost=5)
+            Trade(5, 5, Side.BUY, cost=5)
 
         with self.assertRaises(TypeError):
-            Trade(5, 5, 'buy', 5)
+            Trade(5, 5, Side.BUY, 5)
 
     def test_containerize_columns(self):
         """ Test that containerized produced the right column names and order """
@@ -43,7 +43,7 @@ class TestSuccessfulTrade(unittest.TestCase):
 
     def test_arg_id(self):
         """ Test that id initialized correctly """
-        t = SuccessfulTrade(5, 5, 'buy', 7)
+        t = SuccessfulTrade(5, 5, Side.BUY, 7)
         self.assertEqual(t.id, 7)
 
     def test_containerize_columns(self):
