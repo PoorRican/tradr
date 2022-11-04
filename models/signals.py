@@ -61,7 +61,7 @@ class Indicator(ABC):
 
     @staticmethod
     @abstractmethod
-    def strength(self, *args, **kwargs) -> float:
+    def strength(*args, **kwargs) -> float:
         """ Determine strength of Trend """
         pass
 
@@ -188,11 +188,11 @@ class IndicatorContainer(UserList[INDICATOR]):
     def develop(self, data: pd.DataFrame) -> NoReturn:
         """ Generate indicator data for all available given candle data.
 
-        `self.graph` is used to store all indicator data and should only be updated by this method.
+        Used to update `self.graph` which is dedicated to store all indicator data and should only be updated
+        by this method.
 
         Args:
             data: Candle data. Should be shortened (by not using older data) when speed becomes an issue
-
         """
         df = self.container(data.index)
         for indicator in self.data:
@@ -230,3 +230,13 @@ class IndicatorContainer(UserList[INDICATOR]):
             return signals[0]
 
         return Signal.HOLD
+
+    def strength(self, point: pd.Timestamp = None):
+        assert len(self.graph)
+        if point:
+            frame = self.graph.loc[point]
+        else:
+            frame = self.graph.iloc[-1]
+
+        strengths = pd.Series([indicator.strength(frame) for indicator in self.data])
+        return strengths.mean()

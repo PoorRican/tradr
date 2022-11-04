@@ -1,3 +1,4 @@
+from math import floor
 import pandas as pd
 from typing import Mapping, Optional, NoReturn, Sequence
 
@@ -70,8 +71,8 @@ class TrendDetector(object):
             - Asynchronous
             - Threading
         """
-        assert len(self.candles) is not 0
-        assert len(self.indicators) is not 0
+        assert len(self.candles) != 0
+        assert len(self.indicators) != 0
 
         for freq in self.frequencies:
             self.indicators[freq].develop(self.get_candles(freq))
@@ -82,22 +83,23 @@ class TrendDetector(object):
         TODO:
             - Use `pd.infer_freq`. Fill in missing gaps to create uniform dataframe
         """
-        data = {}
+        data = []
 
         # get candle data for all frequencies
         for freq in self.frequencies:
-            data[freq] = self.market.get_candles(freq)
+            fetched = pd.DataFrame(self.market.get_candles(freq), copy=True)
 
             # add freq value to as multi-index column
-            _freq_str = (freq,) * len(data[freq].columns)
-            _columns = data[freq].columns
-            data[freq].columns = pd.MultiIndex.from_tuples(zip(_freq_str, _columns))
+            _freq_str = (freq,) * len(fetched.columns)
+            _columns = fetched.columns
+            fetched.columns = pd.MultiIndex.from_tuples(zip(_freq_str, _columns))
+            data.append(fetched)
 
-        combined = pd.concat([i for i in data.values()], axis='columns')
+        combined = pd.concat(data, axis=1)
 
         return combined
 
-    def _fetch_trends(self, point: 'pd.Timestamp') -> Mapping[str, 'TrendMovement']:
+    def _fetch_trends(self, point: pd.Timestamp = None) -> Mapping[str, 'TrendMovement']:
         trends: Mapping['str': 'TrendMovement'] = {}
         for freq in self.frequencies:
             result: Signal = self.indicators[freq].check(self.get_candles(freq), point)
@@ -109,12 +111,8 @@ class TrendDetector(object):
         self.candles = self._fetch()
 
     def _determine_scalar(self, point: Optional[pd.Timestamp] = None) -> int:
-        results = []
-        for freq in self.frequencies:
-            for indicator in self.indicators[freq]:
-                results.append(indicator.strength())
-        # TODO: determine integer scalar from signal strength
-        return 1
+        results = pd.Series([container.strength(point) for container in self.indicators.values()])
+        return int(floor(results.mean())) or 1
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
         """ Characterize trend magnitude (direction and strength of trend).
@@ -132,7 +130,7 @@ class TrendDetector(object):
                 `unison == False`, or where consensus of `self.indicators.check()` is used when `unison == True`
         """
         if not point:
-            point = self.candles.iloc[-1]
+            point = self.candles.iloc[-1].name
 
         results = self._fetch_trends(point)
         consensus = self._determine_consensus(list(results.values()))
@@ -140,7 +138,7 @@ class TrendDetector(object):
         return MarketTrend(consensus, scalar=self._determine_scalar())
 
     @staticmethod
-    def _determine_consensus(values: Sequence) -> TrendMovement:
+    def _determine_consensus(values: Sequence['TrendMovement']) -> TrendMovement:
         """ Return the most common value in a dict containing a list of returned results """
         counts = {}
         for v in TrendMovement.__members__.values():
