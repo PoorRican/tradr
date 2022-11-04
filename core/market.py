@@ -1,5 +1,5 @@
 from abc import abstractmethod, ABC
-from typing import Union
+from typing import Union, Tuple
 
 import pandas as pd
 
@@ -15,6 +15,9 @@ class Market(ABC):
         - Add a layer of risk management:
             - "runaway" trade decisions or unfavorable outcomes
     """
+
+    valid_freqs: Tuple[str, ...]
+
     def __init__(self):
         self.data = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
         """DataFrame: container for candle data.

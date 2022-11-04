@@ -2,7 +2,7 @@ import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from analysis.trend import TrendMovement, TrendDetector, MarketTrend
+from analysis.trend import TrendMovement, TrendDetectorMixin, MarketTrend
 from models.signals import Signal
 
 
@@ -14,56 +14,54 @@ class TrendDetectorTests(unittest.TestCase):
         with patch('core.markets.GeminiMarket') as cls:
             self.market = cls()
 
-        TrendDetector.frequencies = FREQUENCIES
-        self.detector = TrendDetector(self.market)
+        TrendDetectorMixin._frequencies = FREQUENCIES
+        self.detector = TrendDetectorMixin(update=False)
 
         # setup detector
         _index = pd.MultiIndex.from_tuples(zip(FREQUENCIES, ('a', 'b')))
         df = pd.DataFrame([(1, 2), (pd.NA, 4)], columns=_index)
-        self.detector.candles = df
+        self.detector._candles = df
 
     def test_init_args(self):
-        # test that market is passed
-        self.assertTrue(hasattr(self.detector, 'market'))
-        self.assertTrue(type(self.detector.candles) == pd.DataFrame)
-        self.assertEqual(tuple(self.detector.indicators.keys()), TrendDetector.frequencies)
+        self.assertTrue(type(self.detector._candles) == pd.DataFrame)
+        self.assertEqual(tuple(self.detector._indicators.keys()), TrendDetectorMixin._frequencies)
 
     def test_get_candles(self):
         # assert func excludes missing values
-        self.assertEqual(len(self.detector.get_candles('freq1')), 1)
-        self.assertEqual(len(self.detector.get_candles('freq2')), 2)
+        self.assertEqual(len(self.detector.candles('freq1')), 1)
+        self.assertEqual(len(self.detector.candles('freq2')), 2)
 
     def test_develop(self):
         # mock indicators.develop(). Return predetermined df depending on freq
-        self.detector.get_candles = MagicMock(return_value='get_candles')
-        for container in self.detector.indicators.values():
+        self.detector.candles = MagicMock(return_value='get_candles')
+        for container in self.detector._indicators.values():
             container.develop = MagicMock()
 
         # assert that develop was called n-times, where n == len(frequencies)
         self.detector.develop()
-        for container in self.detector.indicators.values():
+        for container in self.detector._indicators.values():
             container.develop.assert_called_with('get_candles')
 
         # get assertion error when no candles
         with self.assertRaises(AssertionError):
-            _candles = self.detector.candles
-            self.detector.candles = []
+            _candles = self.detector._candles
+            self.detector._candles = []
             self.detector.develop()
-            self.detector.candles = _candles
+            self.detector._candles = _candles
             del _candles
 
         # get assertion error when no indicators
         with self.assertRaises(AssertionError):
-            _indicators = self.detector.indicators
-            self.detector.indicators = []
+            _indicators = self.detector._indicators
+            self.detector._indicators = []
             self.detector.develop()
-            self.detector.indicators = _indicators
+            self.detector._indicators = _indicators
             del _indicators
 
     def test_fetch(self):
         # mock get_candles
         _candles = pd.DataFrame({'c': [1, 'test'], 'd': [3, 4]})
-        self.detector.market.get_candles = MagicMock(return_value=_candles)
+        self.detector.candles = MagicMock(return_value=_candles)
 
         fetched = self.detector._fetch()
 
@@ -78,9 +76,9 @@ class TrendDetectorTests(unittest.TestCase):
     def test_update(self):
         self.detector._fetch = MagicMock(return_value='fetched')
         # assert `_fetch()` is called
-        self.detector.update()
+        self.detector.update_candles()
         self.detector._fetch.assert_called_once()
-        self.assertEqual(self.detector.candles, 'fetched')
+        self.assertEqual(self.detector._candles, 'fetched')
 
     def test_determine_scalar(self):
         # mock indicator.strength()
