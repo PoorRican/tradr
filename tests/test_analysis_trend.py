@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from analysis.trend import TrendMovement, TrendDetectorMixin, MarketTrend
-from models.signals import Signal
 
 
 FREQUENCIES = ('freq1', 'freq2')
