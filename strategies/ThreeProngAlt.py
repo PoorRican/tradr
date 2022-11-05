@@ -1,13 +1,17 @@
 import pandas as pd
-from typing import Sequence, Generic
+from typing import Sequence, Union
 
-from models.signals import Signal, MACDRow, BBANDSRow, STOCHRSIRow, INDICATOR
+from analysis.trend import TrendDetector
+from models.signals import MACDRow, BBANDSRow, STOCHRSIRow
 from models.trades import Side
+from models.trend import TrendMovement
 from strategies.OscillatingStrategy import OscillatingStrategy
 
 
 class ThreeProngAlt(OscillatingStrategy):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
+
+    Foresight from `TrendDetector` is incorporated into `_calc_amount()` and `_is_profitable()` is overwritten.
 
     A buy or sale is made based on lt/gt comparisons of all three signals, and theoretically
     seems adept at trading with an extremely volatile stock like Bitcoin. Each buy costs the same
@@ -45,10 +49,17 @@ class ThreeProngAlt(OscillatingStrategy):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        _indicators: Sequence[INDICATOR, ...] = [BBANDSRow, MACDRow, STOCHRSIRow]
+        _indicators: Sequence = [BBANDSRow, MACDRow, STOCHRSIRow]
         super().__init__(indicators=_indicators, *args, **kwargs)
 
         self.threshold = threshold
+
+        self.detector = TrendDetector(self.market)
+        """ Sensor-like class that detects market trends through the `characterize()` method.
+        
+        Calculation of indicator data should be performed by a threaded-routine managed by startup level scheduler.
+        Therefore, functions like `characterize()` must be asynchronous and a lock-flag placed on container.
+        """
 
     def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """
@@ -68,6 +79,7 @@ class ThreeProngAlt(OscillatingStrategy):
 
         Todo:
             - Integrate weights, so that extreme values do not skew
+            - Incorporate orderbook into average
         """
         assert side in (Side.BUY, Side.SELL)
         if side == Side.BUY:
@@ -87,20 +99,66 @@ class ThreeProngAlt(OscillatingStrategy):
         rate = self._calc_rate(extrema, side)
         if side == Side.SELL:
             other = self._check_unpaired(rate)
-            return last_order['amt'] + other['amt'].sum()
+
+            total = last_order['amt'] + other['amt'].sum()
+
+            # modulate amount based on market trend
+            # TODO: add partially sold buys when orders post using this
+
+            _trend = self.detector.characterize(extrema)
+            # sell more during strong uptrend
+            if _trend.trend is TrendMovement.UP:
+                return total * _trend.scalar
+            # sell less during strong downtrend
+            elif _trend.trend is TrendMovement.DOWN:
+                return total / _trend.scalar
+
+            return total
+
         if side == Side.BUY:
             # TODO: amount should increase as total gain exceeds 125% of `starting`
             # TODO: amount bought should not exceed amount of starting capital and should
             #   take into account unpaired buy trades.
-            return self.starting / rate
+            amt = self.starting / rate
 
-    def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
+            # modulate amount based on market trend
+            # TODO: add partially sold buys when orders post using this
+
+            _trend = self.detector.characterize(extrema)
+            # buy less during strong uptrend
+            if _trend.trend is TrendMovement.UP:
+                return amt / _trend.scalar
+            # buy more during strong downtrend
+            elif _trend.trend is TrendMovement.DOWN:
+                return amt * _trend.scalar
+
+            return amt
+
+    def _is_profitable(self, amount: float, rate: float, side: Side,
+                       extrema: Union['pd.Timestamp', str] = None) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
 
-        Always buy according to signals.
+        Incorrect trades are rejected during strong trends
+
+        Always buy according to signals. However, when selling during a strong uptrend, threshold is exponentially
+        multiplied by `MarketTrend.scalar`. This is because significantly greater profit is expected during a strong
+        uptrend.
         """
         assert side in (Side.BUY, Side.SELL)
+
+        # prevent incorrect trades during strong trend
+        _trend = self.detector.characterize()
+        if _trend.scalar > 3 and \
+           (_trend.trend is TrendMovement.UP and side is Side.BUY) or \
+           (_trend.trend is TrendMovement.DOWN and side is Side.SELL):
+            return False
+
         if side == Side.BUY:
             return True
         else:
-            return self._calc_profit(amount, rate, side) >= self.threshold
+            # handle sell
+            if _trend.trend == TrendMovement.UP:
+                _min_profit = self.threshold * _trend.scalar * _trend.scalar
+            else:
+                _min_profit = self.threshold
+            return self._calc_profit(amount, rate, side) >= _min_profit

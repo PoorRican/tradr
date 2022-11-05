@@ -2,13 +2,13 @@ from math import floor
 import pandas as pd
 from typing import Mapping, Optional, NoReturn, Sequence
 
-from core.markets import GeminiMarket
+from core.markets import Market
 from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow, Signal
 from models.trend import TrendMovement, MarketTrend
 
 
-class TrendDetectorMixin(GeminiMarket):
-    """ A mixin for `Market` that encapsulates analysis of market trends.
+class TrendDetector(object):
+    """ An independent object that provides foresight by encapsulating analysis of market trends.
 
     Candle data is stored internally in `_candles`
 
@@ -31,8 +31,10 @@ class TrendDetectorMixin(GeminiMarket):
     Shall be ordered from shortest-to-longest.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, market: Market):
+        super().__init__()
+
+        self.market = market
 
         self._candles: pd.DataFrame = pd.DataFrame()
         """ 3-dim DataFrame of candle data incorporating multiple timeframes
@@ -95,7 +97,7 @@ class TrendDetectorMixin(GeminiMarket):
 
         # get candle data for all frequencies
         for freq in self._frequencies:
-            fetched = pd.DataFrame(self.candles(freq), copy=True)
+            fetched = pd.DataFrame(self.market.get_candles(freq), copy=True)
 
             # add freq value to as multi-index column
             _freq_str = (freq,) * len(fetched.columns)

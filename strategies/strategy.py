@@ -99,9 +99,11 @@ class Strategy(ABC):
 
     def _calc_profit(self, amount: float, rate: float, side: Side) -> float:
         """ Calculates profit of a sale.
+
+        Returned profit should not be biased in any way. Any biasing on profit should be handled by
+        a higher-level method such as `is_profitable()`.
         """
         last_trade = self.orders.iloc[-1]
-        assert last_trade['side'] != side
 
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
         return gain - self.market.get_fee()
@@ -242,7 +244,8 @@ class Strategy(ABC):
         return bool(accepted)
 
     @abstractmethod
-    def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
+    def _is_profitable(self, amount: float, rate: float, side: Side,
+                       extrema: Union[str, 'pd.Timestamp'] = None) -> bool:
         """
         Determine if the given trade is profitable or not.
 

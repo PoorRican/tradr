@@ -1,11 +1,11 @@
-from typing import Union, Tuple, Sequence
-from abc import ABC, abstractmethod
+from abc import ABC
 from datetime import datetime
 import pandas as pd
+from typing import Union, Tuple, Sequence
 
-from strategies.strategy import Strategy
 from models.signals import Signal, IndicatorContainer, INDICATOR
 from models.trades import SuccessfulTrade, Side
+from strategies.strategy import Strategy
 
 
 class OscillatingStrategy(Strategy, ABC):
@@ -16,14 +16,6 @@ class OscillatingStrategy(Strategy, ABC):
 
         self.timeout: str = timeout
         self.indicators: IndicatorContainer = IndicatorContainer(indicators)
-
-    @abstractmethod
-    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
-        pass
-
-    @abstractmethod
-    def _is_profitable(self, amount: float, rate: float, side: Side) -> bool:
-        pass
 
     def _oscillation(self, signal: Signal, timeout=True) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.
@@ -86,14 +78,10 @@ class OscillatingStrategy(Strategy, ABC):
             signal: Side = Side(signal)
             rate = self._calc_rate(point, signal)
             amount = self._calc_amount(point, signal)
-            if self._is_profitable(amount, rate, signal):
+            if self._is_profitable(amount, rate, signal, point):
                 return signal, point
 
         return False
-
-    @abstractmethod
-    def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
-        pass
 
     def get_unpaired_orders(self) -> pd.DataFrame:
         """ Select of unpaired orders by cross-referencing `unpaired_buys` """
