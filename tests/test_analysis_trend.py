@@ -2,7 +2,7 @@ import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from analysis.trend import TrendMovement, TrendDetectorMixin, MarketTrend
+from analysis.trend import TrendMovement, TrendDetector, MarketTrend
 
 
 FREQUENCIES = ('freq1', 'freq2')
@@ -13,8 +13,8 @@ class TrendDetectorTests(unittest.TestCase):
         with patch('core.markets.GeminiMarket') as cls:
             self.market = cls()
 
-        TrendDetectorMixin._frequencies = FREQUENCIES
-        self.detector = TrendDetectorMixin(update=False)
+        TrendDetector._frequencies = FREQUENCIES
+        self.detector = TrendDetector(self.market)
 
         # setup detector
         _index = pd.MultiIndex.from_tuples(zip(FREQUENCIES, ('a', 'b')))
@@ -23,9 +23,9 @@ class TrendDetectorTests(unittest.TestCase):
 
     def test_init_args(self):
         self.assertTrue(type(self.detector._candles) == pd.DataFrame)
-        self.assertEqual(tuple(self.detector._indicators.keys()), TrendDetectorMixin._frequencies)
+        self.assertEqual(tuple(self.detector._indicators.keys()), TrendDetector._frequencies)
 
-    def test_get_candles(self):
+    def test_candles(self):
         # assert func excludes missing values
         self.assertEqual(len(self.detector.candles('freq1')), 1)
         self.assertEqual(len(self.detector.candles('freq2')), 2)
@@ -60,7 +60,7 @@ class TrendDetectorTests(unittest.TestCase):
     def test_fetch(self):
         # mock get_candles
         _candles = pd.DataFrame({'c': [1, 'test'], 'd': [3, 4]})
-        self.detector.candles = MagicMock(return_value=_candles)
+        self.detector.market.get_candles = MagicMock(return_value=_candles)
 
         fetched = self.detector._fetch()
 

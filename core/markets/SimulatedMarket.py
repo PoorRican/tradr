@@ -41,3 +41,6 @@ class SimulatedMarket(Market):
 
     def translate_period(self, freq: str):
         return self.model.translate_period(freq)
+
+    def get_candles(self, *args, **kwargs):
+        return self.model.get_candles(*args, **kwargs)

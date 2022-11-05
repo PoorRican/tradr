@@ -4,7 +4,7 @@ from models.trades import Trade, SuccessfulTrade, Side
 from core.markets import SimulatedMarket
 
 
-class MySimulatedMarket(unittest.TestCase):
+class SimulatedMarketTestCases(unittest.TestCase):
     def test_convert(self):
         """ Test that `_convert` returns a `SuccessfulTrade` object """
         trade = Trade(1, 2, Side.BUY)
@@ -12,7 +12,7 @@ class MySimulatedMarket(unittest.TestCase):
         self.assertIsInstance(market._convert(trade), SuccessfulTrade,
                               'SimulatedMarket not returned')
 
-        self.assertEqual(market, 1, 'orders counter not increased')
+        self.assertEqual(market.orders, 1, 'orders counter not increased')
 
     def test_place_order(self):
         """ Test that `place_order` always succeeds"""
