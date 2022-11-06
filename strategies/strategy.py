@@ -87,7 +87,7 @@ class Strategy(ABC):
         """ Store order data """
         self.orders.to_pickle(self.filename)
 
-    def _calc_profit(self, amount: float, rate: float, side: Side) -> float:
+    def _calc_profit(self, amount: float, rate: float) -> float:
         """ Calculates profit of a sale.
 
         Returned profit should not be biased in any way. Any biasing on profit should be handled by
@@ -125,9 +125,9 @@ class Strategy(ABC):
             self._post_sale(successful)
             add_to_df(self, 'orders', extrema, successful)
             return successful
-        else:
-            add_to_df(self, 'failed_orders', extrema, trade)
-            return False
+
+        add_to_df(self, 'failed_orders', extrema, trade)
+        return False
 
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
@@ -236,8 +236,9 @@ class Strategy(ABC):
     @abstractmethod
     def _is_profitable(self, amount: float, rate: float, side: Side,
                        extrema: Union[str, 'pd.Timestamp'] = None) -> bool:
-        """
-        Determine if the given trade is profitable or not.
+        """ Determine if the given trade is profitable or not.
+
+        This function is the final decision maker for whether an order should be attempted or not.
 
         Args:
             amount: amount of asset to be traded
@@ -267,4 +268,3 @@ class Strategy(ABC):
             an `TypeError` from being raised when unpacking non-iterable bool.
         """
         pass
-

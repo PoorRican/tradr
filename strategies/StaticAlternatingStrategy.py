@@ -8,6 +8,10 @@ from models.trades import Side
 class StaticAlternatingStrategy(Strategy):
     """ Strategy that oscillates trading the same amount of an asset.
 
+    This strategy exists to be a baseline for judging strategy performance. Since this strategy does not employ
+    any analytical calculations, comparing the `pnl()` of this strategy against another on the same dataset
+    exposes algorithmic flaws or fatal errors in implementation.
+
     Profitability is defined as any change in price that exceeds a fixed value in fiat currency.
     The goal of this strategy is to make small trades with small, positive profit at a high frequency.
     Amount of asset to trade defined by `amount` and profit threshold is defined by `threshold`.
@@ -25,8 +29,9 @@ class StaticAlternatingStrategy(Strategy):
     name = 'static_alternating'
 
     def __init__(self, starting: float, amount: float, threshold: float, market: Market):
-        super().__init__(starting, market)
+        super().__init__(market)
 
+        self.starting = starting
         self.amount = amount
         self.threshold = threshold
 
@@ -76,7 +81,7 @@ class StaticAlternatingStrategy(Strategy):
         """
         assert side in (Side.BUY, Side.SELL)
         if side == Side.SELL:
-            return self._calc_profit(amount, rate, side) >= self.threshold
+            return self._calc_profit(amount, rate) >= self.threshold
         else:
             if extrema:
                 data = self.market.data.loc[:extrema]
@@ -89,16 +94,8 @@ class StaticAlternatingStrategy(Strategy):
                 return second > last
             return False
 
-    def _develop_signals(self, point: pd.Timestamp) -> pd.DataFrame:
-        """ Placeholder function
-
-        Since this strategy does not employ any signals, this is a dummy function
-        to overwrite the underlying `abstractmethod`.
-        """
-        return NotImplemented
-
     def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'],
-                                                                       'False']:
+                                                                         'False']:
         """ Use market data to decide to execute buy/sell.
 
         The algorithm attempts to see if the opposite order type is profitable.
