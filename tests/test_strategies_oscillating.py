@@ -17,7 +17,7 @@ class MainOscillatingStrategyTests(unittest.TestCase):
                                             indicators=())
 
     def test_init(self):
-        self.assertIsInstance(self.strategy.unpaired_buys, pd.Series)
+        self.assertIsInstance(self.strategy.incomplete, pd.Series)
         self.assertIsInstance(self.strategy.timeout, str)
         self.assertIsInstance(self.strategy.indicators, IndicatorContainer)
         # TODO: assert `indicators` param gets passed to `IndicatorContainer`
@@ -60,33 +60,33 @@ class MainOscillatingStrategyTests(unittest.TestCase):
 
         then = dt.datetime.now() - dt.timedelta(hours=7)
         self.strategy.orders = pd.DataFrame({'side': [Signal.BUY], 'id': 'id'}, index=[then])
-        self.assertTrue(self.strategy.unpaired_buys.empty)
+        self.assertTrue(self.strategy.incomplete.empty)
         self.assertTrue(self.strategy._oscillation(Signal.BUY))
-        self.assertEqual(self.strategy.unpaired_buys.iloc[0], 'id')
+        self.assertEqual(self.strategy.incomplete.iloc[0], 'id')
 
     def test_post_sale(self):
         # check that sold unpaired buys are removed
         self.strategy.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'rate': [5, 6, 7, 8]})
-        self.strategy.unpaired_buys = pd.Series([1, 2, 3])
+        self.strategy.incomplete = pd.Series([1, 2, 3])
         trade = SuccessfulTrade(1, 6, Side.SELL, 9)
         self.strategy._post_sale(trade)
-        self.assertEqual(self.strategy.unpaired_buys.to_list(), [3])
+        self.assertEqual(self.strategy.incomplete.to_list(), [3])
 
         # check untouched for buy
         self.strategy.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'rate': [5, 6, 7, 8]})
-        self.strategy.unpaired_buys = pd.Series([2, 3])
+        self.strategy.incomplete = pd.Series([2, 3])
         trade = SuccessfulTrade(1, 6, Side.BUY, 9)
         self.strategy._post_sale(trade)
-        self.assertEqual(self.strategy.unpaired_buys.to_list(), [2, 3])
+        self.assertEqual(self.strategy.incomplete.to_list(), [2, 3])
 
     def test_check_unpaired(self):
         self.strategy.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'rate': [5, 6, 7, 8]})
-        self.strategy.unpaired_buys = pd.Series([1, 2])
+        self.strategy.incomplete = pd.Series([1, 2])
         self.assertEqual(self.strategy._check_unpaired(6).to_dict(), {'id': {0: 1, 1: 2}, 'rate': {0: 5, 1: 6}})
 
     def test_get_unpaired_orders(self):
         self.strategy.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'other': [5, 6, 7, 8]})
-        self.strategy.unpaired_buys = pd.Series([1, 2])
+        self.strategy.incomplete = pd.Series([1, 2])
         self.assertEqual(self.strategy.get_unpaired_orders().to_dict(), {'id': {0: 1, 1: 2}, 'other': {0: 5, 1: 6}})
 
 

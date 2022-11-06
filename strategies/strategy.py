@@ -36,7 +36,7 @@ class Strategy(ABC):
     name: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, starting: float, market: Market):
+    def __init__(self, market: Market):
         self.orders = SuccessfulTrade.container()
         """ History of successful orders performed by this strategy. Timestamps of extrema are used as indexes.
         
@@ -57,18 +57,8 @@ class Strategy(ABC):
             - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
         """
 
-        self.starting = starting
-        """ Starting amount of fiat currency.
-            
-            Inherited classes should implement risk calculation using this. Risk calculation can consist of using this
-            value to initially begin trading fractions of this number (as to not to leave too many positions exposed and
-            to remain flexible with trade type alternation). Then as gains are realized, `fraction` and `amount`
-            parametric attributes would adjust to maintain similar risk.
-
-        """
-
         self.market = market
-        """Reference to `Market` object.
+        """ Reference to `Market` object.
         
         Notes:        
         
@@ -278,12 +268,3 @@ class Strategy(ABC):
         """
         pass
 
-    def pnl(self) -> float:
-        # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning
-        #       the number of unpaired orders and unrealized gain.
-        buy_orders = self.orders[self.orders['side'] == Side.BUY]
-        sell_orders = self.orders[self.orders['side'] == Side.SELL]
-
-        buy_cost = buy_orders['cost'].sum()
-        sell_cost = sell_orders['cost'].sum()
-        return (sell_cost - buy_cost) - self.starting
