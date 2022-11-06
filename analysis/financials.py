@@ -2,7 +2,7 @@ from abc import ABC
 import pandas as pd
 from typing import NoReturn
 
-from strategies import Strategy
+from strategies.strategy import Strategy
 from models.trades import Side, SuccessfulTrade
 
 
@@ -36,7 +36,12 @@ class FinancialsMixin(Strategy, ABC):
     def __init__(self, *args, threshold: float, capitol: float, assets: float, order_count: int = 4, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.incomplete: pd.Series = pd.Series(name='incomplete/open buy orders', dtype='int32')
+        self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'orig_id'])
+        """ Store for incomplete/open buy orders.
+        
+        The `amt` column serves as a ledger to track how much of the asset has been sold (since trend might modulate
+        how much of an asset is sold).
+        """
 
         assert threshold > 0
         self.threshold = threshold
@@ -98,12 +103,33 @@ class FinancialsMixin(Strategy, ABC):
             self.assets -= trade.amt
 
     def get_unpaired_orders(self) -> pd.DataFrame:
-        """ Select of unpaired orders by cross-referencing `unpaired_buys` """
-        return self.orders[self.orders['id'].isin(self.incomplete.values)]
+        """ Select of unpaired orders by cross-referencing `unpaired_buys`
 
-    def _check_unpaired(self, rate: float):
-        """ Get any unpaired orders that can be sold at a profit. """
-        unpaired = self.get_unpaired_orders()
+        Returns
+            Original dataframe row from `orders` of orders whose IDs are found in `incomplete`
+        """
+        return self.orders[self.orders['id'].isin(self.incomplete['orig_id'].values)]
+
+    def _check_unpaired(self, rate: float, original: bool = True) -> pd.DataFrame:
+        """ Get any unpaired orders that can be sold at a profit.
+
+        Args:
+            rate:
+                Select rows whose rate is <= given `rate`. Since buy orders cannot be sold at a rate lower than the
+                buy price, rate is used to select incomplete order rows when determining amount of available assets
+                should be sold.
+            original:
+                Boolean flag used to return from `orders` or `incomplete`. This is because if the amount of asset sold
+                is less than the incomplete order, `incomplete` serves as a ledger ta track how much of the asset has
+                yet to be sold.
+
+        Returns:
+            Dataframe row (from `orders` or `incomplete` depending on `original` flag) whose rate falls below `rate`
+        """
+        if original:
+            unpaired = self.get_unpaired_orders()
+        else:
+            unpaired = self.incomplete
         return unpaired[unpaired['rate'] <= rate]
 
     def unrealized_gain(self) -> float:
@@ -116,17 +142,16 @@ class FinancialsMixin(Strategy, ABC):
         highest = max(unpaired['rate'])
         return unpaired['amt'].sum() * highest
 
-    def _post_sale(self, trade: SuccessfulTrade):
-        """ Clean `incomplete` after successful sale.
-        """
-        if trade.side == Side.SELL:
-            unpaired = self._check_unpaired(trade.rate)
-            if not unpaired.empty:
-                matching = self.incomplete.isin(unpaired['id'].values)
-                indices = self.incomplete.loc[matching].index
-                self.incomplete.drop(index=indices, inplace=True)
+    def _post_sale(self, trade: SuccessfulTrade) -> NoReturn:
+        """ Handle mundane accounting functions for when a sale completes.
 
-    def _add_incomplete(self, row: pd.DataFrame):
+        Adjust `incomplete`, `capitol`, and `assets` after successful sale.
+        """
+        self._clean_incomplete(trade)
+        self._adjust_capitol(trade)
+        self._adjust_assets(trade)
+
+    def _handle_inactive(self, row: pd.DataFrame):
         """ Add incomplete order.
 
         Args:
@@ -135,6 +160,53 @@ class FinancialsMixin(Strategy, ABC):
         """
         assert len(row) == 1
 
-        _row = pd.Series([row['id']])
+        _row = pd.DataFrame({'amt': row['amt'], 'rate': row['rate'], 'orig_id': row['id']})
         self.incomplete = pd.concat([self.incomplete, row],
                                     ignore_index=True)
+
+    def _clean_incomplete(self, trade: SuccessfulTrade):
+        if trade.side == Side.SELL:
+            unpaired = self._check_unpaired(trade.rate)
+            if not unpaired.empty:
+                # if all assets are sold, drop the rows.
+                if trade.amt >= unpaired['amt'].sum():
+                    matching = self.incomplete.isin(unpaired['id'].values)
+                    indices = self.incomplete.loc[matching].index
+                    self.incomplete.drop(index=indices, inplace=True)
+                # figure out how much was sold.
+                else:
+                    self._deduct_sold(trade, unpaired)
+
+    def _deduct_sold(self, trade: SuccessfulTrade, unpaired: pd.DataFrame) -> NoReturn:
+        """ Deduct the amount of asset sold from incomplete order storage.
+
+        When trend is modulating asset trade amounts, not all assets are sold. For example,
+        during a strong downtrend, a purchase of one unit does not result in the sale of one
+        unit. The `incomplete` store serves as a ledger of the amount of assets sold. In the
+        same scenario, those assets are bought during a strong downtrend should be sold during
+        a strong uptrend. Since marginal trades might not be possible during a strong downtrend,
+        profit may be recuperated by this strong sale.
+
+        Args:
+            unpaired:
+                Rows from `orders` referring to unpaired buy orders.
+
+        TODO:
+            -   Track related orders
+        """
+
+        # deduct from oldest unpaired order
+        unpaired.sort_index(inplace=True)
+
+        amt = trade.amt
+        _drop = []              # rows to drop
+        for order in unpaired.values:
+            if amt >= order['amt']:
+                _drop.append(order.index)
+                amt -= order['amt']
+            else:
+                # update amount remaining.
+                _remaining = order['amt'] - amt
+                self.incomplete[self.incomplete['orig_id'] == order['id']]['amt'] = _remaining
+
+        self.incomplete.drop(index=_drop, inplace=True)
