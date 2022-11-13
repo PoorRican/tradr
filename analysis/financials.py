@@ -34,7 +34,7 @@ class FinancialsMixin(Strategy, ABC):
         -   Convert `capitol` and `assets` to time-series that tracks balance over time, and why values change
             (eg: user-initiated deposit, trade id)
     """
-    def __init__(self, *args, threshold: float, capitol: float, assets: float, order_count: int = 4, **kwargs):
+    def __init__(self, *args, threshold: float, capitol: float, assets: float = 0, order_count: int = 4, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
@@ -190,7 +190,7 @@ class FinancialsMixin(Strategy, ABC):
         self._adjust_capitol(trade)
         self._adjust_assets(trade)
 
-    def _handle_inactive(self, row: pd.DataFrame) -> NoReturn:
+    def _handle_inactive(self, row: pd.Series) -> NoReturn:
         """ Add incomplete order to `incomplete` container.
 
         Inactivity is defined by `OscillatingStrategy.timeout` and is checked during
@@ -198,14 +198,15 @@ class FinancialsMixin(Strategy, ABC):
 
         Args:
             row:
-                row containing duplicate order. Must contain `id`, `rate` and `amt` columns.
+                row containing "inactive" order. Must contain `id`, `rate`, and `amt` columns.
         """
-        assert len(row) == 1
+        assert type(row) is pd.Series
+        assert row['side'] == Side.BUY
 
-        if row['id'].isin(self.incomplete['id'])[0]:
+        if row['id'] in self.incomplete['id']:
             warn('Adding duplicate id found in `incomplete`')
 
-        _row = pd.DataFrame({'amt': row['amt'], 'rate': row['rate'], 'id': row['id']})
+        _row = pd.DataFrame([[row['amt'], row['rate'], row['id']]], columns=['amt', 'rate', 'id'])
         self.incomplete = pd.concat([self.incomplete, row],
                                     ignore_index=True)
 

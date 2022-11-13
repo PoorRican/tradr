@@ -1,28 +1,19 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 import pandas as pd
-from typing import Union, Tuple, Sequence, NoReturn
+from typing import Union, Tuple, Sequence
 
+from analysis.financials import FinancialsMixin
 from models.signals import Signal, IndicatorContainer, INDICATOR
 from models.trades import Side
-from strategies.strategy import Strategy
 
 
-class OscillatingStrategy(Strategy, ABC):
+class OscillatingStrategy(FinancialsMixin, ABC):
     def __init__(self, *args, indicators: Sequence[INDICATOR], timeout: str = '6h', **kwargs):
         super().__init__(*args, **kwargs)
 
         self.timeout: str = timeout
         self.indicators: IndicatorContainer = IndicatorContainer(indicators)
-
-    @property
-    @abstractmethod
-    def _remaining(self) -> int:
-        return True
-
-    @abstractmethod
-    def _handle_inactive(self, row: pd.DataFrame) -> NoReturn:
-        pass
 
     def _oscillation(self, signal: Signal, timeout=True) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.

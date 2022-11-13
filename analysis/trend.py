@@ -66,10 +66,9 @@ class TrendDetector(object):
         Reduces boilerplate for returning cleaned data.
         """
         assert frequency in self._frequencies
-        assert frequency in self._candles.columns
 
         # fetch via multi-index
-        return self._candles[frequency].dropna()
+        return self._candles.loc[frequency].dropna()
 
     def develop(self) -> NoReturn:
         """ Compute all indicator functions across all frequencies using existing candle data.

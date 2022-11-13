@@ -94,6 +94,8 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             last_order = self.orders.iloc[-1]
 
+        # TODO: do not exceed total amount of assets or capitol
+
         rate = self._calc_rate(extrema, side)
         if side == Side.SELL:
             other = self._check_unpaired(rate)
@@ -101,6 +103,7 @@ class ThreeProngAlt(OscillatingStrategy):
             total = last_order['amt'] + other['amt'].sum()
 
             # modulate amount based on market trend
+
             # TODO: add partially sold buys when orders post using this
 
             _trend = self.detector.characterize(extrema)
@@ -145,7 +148,7 @@ class ThreeProngAlt(OscillatingStrategy):
         assert side in (Side.BUY, Side.SELL)
 
         # prevent incorrect trades during strong trend
-        _trend = self.detector.characterize()
+        _trend = self.detector.characterize(extrema)
         if _trend.scalar > 3 and \
            (_trend.trend is TrendMovement.UP and side is Side.BUY) or \
            (_trend.trend is TrendMovement.DOWN and side is Side.SELL):
@@ -159,4 +162,4 @@ class ThreeProngAlt(OscillatingStrategy):
                 _min_profit = self.threshold * _trend.scalar * _trend.scalar
             else:
                 _min_profit = self.threshold
-            return self._calc_profit(amount, rate, side) >= _min_profit
+            return self._calc_profit(amount, rate) >= _min_profit
