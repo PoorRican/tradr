@@ -250,9 +250,24 @@ class Strategy(ABC):
         """
         pass
 
-    def develop_signals(self):
+    def calculate_all(self):
+        """ Perform all available calculations for given data at runtime.
+
+        During backtesting or theoretical high-level features, CPU wait time is reduced by performing all recursive,
+        CPU-heavy, or mathematical functions at runtime. These functions must be agnostic to each other and their order.
+        Secondary functions - such as indicators - may be executed elsewhere since that data relies on the output of
+        these functions. During backtesting, since this data is available at startup and remains static, there is no
+        need to calculate graph data multiple times.
+        """
+
+        # Develop indicator/oscillator data
         if hasattr(self, 'indicators'):
             self.indicators.develop(self.market.data)
+
+        # Develop trend detector data
+        if hasattr(self, 'detector'):
+            self.detector.update_candles()
+            self.detector.develop()
 
     @abstractmethod
     def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:

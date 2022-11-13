@@ -58,14 +58,21 @@ class Backtesting(object):
         if end is None:
             end = self.market.data.iloc[-1].name
 
-        msg = "Beginning to process data"
+        msg = "Starting simulation"
         logging.info(msg)
         print(msg)
 
         freq = self.market.data.attrs['freq']
         freq = self.market.translate_period(freq)
 
-        self.strategy.develop_signals()
+        msg = "Compute data"
+        logging.info(msg)
+        print(msg)
+        self.strategy.calculate_all()
+
+        msg = "Beginning to process data"
+        logging.info(msg)
+        print(msg)
         frames = pd.date_range(start, end, freq=freq)
         for i, frame in enumerate(frames):
             # TODO: enable multithreading
