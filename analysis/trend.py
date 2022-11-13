@@ -97,14 +97,9 @@ class TrendDetector(object):
         # get candle data for all frequencies
         for freq in self._frequencies:
             fetched = pd.DataFrame(self.market.get_candles(freq), copy=True)
-
-            # add freq value to as multi-index column
-            _freq_str = (freq,) * len(fetched.columns)
-            _columns = fetched.columns
-            fetched.columns = pd.MultiIndex.from_tuples(zip(_freq_str, _columns))
             data.append(fetched)
 
-        combined = pd.concat(data, axis=1)
+        combined = pd.concat(data, keys=self._frequencies)
 
         return combined
 
