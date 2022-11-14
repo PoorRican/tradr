@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Sequence, Union
+from warnings import warn
 
 from analysis.trend import TrendDetector
 from models.signals import MACDRow, BBANDSRow, STOCHRSIRow
@@ -94,13 +95,11 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             last_order = self.orders.iloc[-1]
 
-        # TODO: do not exceed total amount of assets or capitol
-
         rate = self._calc_rate(extrema, side)
         if side == Side.SELL:
-            other = self._check_unpaired(rate)
+            incomplete = self._check_unpaired(rate)
 
-            total = last_order['amt'] + other['amt'].sum()
+            total = last_order['amt'] + incomplete['amt'].sum()
 
             # modulate amount based on market trend
 
@@ -114,25 +113,26 @@ class ThreeProngAlt(OscillatingStrategy):
             elif _trend.trend is TrendMovement.DOWN:
                 return total / _trend.scalar
 
+            if total > self.assets:
+                warn("Calculated total of assets to sell exceeds actual total")
+                return self.assets
             return total
 
         if side == Side.BUY:
-            # TODO: amount should increase as total gain exceeds 125% of `starting`
-            # TODO: amount bought should not exceed amount of starting capital and should
-            #   take into account unpaired buy trades.
             amt = self.starting / rate
 
             # modulate amount based on market trend
-            # TODO: add partially sold buys when orders post using this
-
             _trend = self.detector.characterize(extrema)
-            # buy less during strong uptrend
+
+            # buy less during strong uptrend; buy more during strong downtrend
             if _trend.trend is TrendMovement.UP:
                 return amt / _trend.scalar
-            # buy more during strong downtrend
             elif _trend.trend is TrendMovement.DOWN:
                 return amt * _trend.scalar
 
+            if self.capitol < amt * rate:
+                warn("Calculated amount of assets to buy exceeds amount of available capitol")
+                return self.capitol / rate
             return amt
 
     def _is_profitable(self, amount: float, rate: float, side: Side,
