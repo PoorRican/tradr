@@ -137,6 +137,7 @@ class GeminiMarket(Market):
 
         # set flag/metadata on `DataFrame`
         data.attrs['freq'] = freq
+        data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
         return data
 
     @property

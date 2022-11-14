@@ -82,9 +82,9 @@ class MACDRow(Indicator):
 
     @staticmethod
     def check(frame: pd.DataFrame, *args, **kwargs) -> Signal:
-        assert 'macdhist' in frame.columns
-
         _ = frame['macdhist']
+        if hasattr(_, '__iter__'):
+            _ = _[0]
         if _ < 0:
             return Signal.BUY
         elif _ > 0:
@@ -120,6 +120,11 @@ class BBANDSRow(Indicator):
         buy += frame['lowerband']
         sell += frame['middleband']
 
+        if hasattr(buy, '__iter__'):
+            buy = buy[0]
+        if hasattr(sell, '__iter__'):
+            sell = sell[0]
+
         if rate <= buy:
             return Signal.BUY
         elif rate >= sell:
@@ -144,9 +149,17 @@ class STOCHRSIRow(Indicator):
 
     @staticmethod
     def check(frame: pd.DataFrame, overbought: float = 20, oversold: float = 80, *args, **kwargs) -> Signal:
-        if frame['fastk'] < overbought and overbought > frame['fastd'] > frame['fastk']:
+        fastk = frame['fastk']
+        fastd = frame['fastd']
+
+        if hasattr(fastk, '__iter__'):
+            fastk = fastk[0]
+        if hasattr(fastd, '__iter__'):
+            fastd = fastd[0]
+
+        if overbought > fastd > fastk:
             return Signal.BUY
-        elif frame['fastk'] > oversold and oversold < frame['fastd'] < frame['fastk']:
+        elif oversold < fastd < fastk:
             return Signal.SELL
         else:
             return Signal.HOLD
@@ -201,29 +214,70 @@ class IndicatorContainer(UserList[INDICATOR]):
                 df[name] = _data
         self.graph = df
 
-    def check(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
+    def check(self, data: pd.DataFrame, point: pd.Timestamp = None, freq: str = False) -> Signal:
         """ Infer signals from indicators.
 
         Notes:
             Processing and computation of indicator data is handled by `self.develop()` and shall therefore
             not be called within this function.
 
+            `point` needs to be manipulated before accessing intraday and daily candle data. When accessing Gemini
+            6-hour market data, returned data is timestamped in intervals of 3, 9, 15, then 21. For daily data, returned
+            data is timestamped at around 20:00 or 21:00. Timestamps might be tied to timezone differences, so
+            data wrangling might need to be modified in the future. Maybe data wrangling could be avoided entirely by
+            just using built-in resampling.
+
         Args:
             data:
                 Market data. Passed for a reference for indicators to use.
             point:
                 Point in time. Used during backtesting. Defaults to last frame in `self.graph`
+            freq:
+                pandas unit of frequency to select indicator data from greater time frequencies. Used by
+                `TrendDetector` to prevent `KeyError` from being raised during simulation arising from larger timeframes
+                of stored candle data (ie: 1day, 6hr, or 1hr)  and smaller timeframes used by strategy/backtesting
+                functions (ie: 15min). If passed, `point` is rounded down to the largest frequency less than `point`
+                (eg: 14:45 becomes 14:00). If not passed, `point` is untouched.
 
         Returns:
             Trade signal based on consensus from indicators.
         """
         # TODO: check that market data is not too ahead of computed indicators
         if point:
-            frame = self.graph.loc[point]
+
+            # modify `point` to access correct timeframe
+            if freq:
+                if freq == '6H':
+                    point = point.floor(freq)
+                    if point.dst():
+                        point -= pd.DateOffset(hours=3)
+                    else:
+                        point -= pd.DateOffset(hours=4)
+                    point = point.floor('H', nonexistent='shift_backward')
+                elif freq == '1D':
+                    # TODO: faulty implementation
+                    # Incorrect date is indexed immediately after daily candle data is released.
+                    point = point.floor(freq) - pd.DateOffset(days=1)
+                    point = point.strftime('%m/%d/%Y')          # generically select data
+                else:
+                    point = point.floor(freq, nonexistent='shift_backward')
+
+                frame = self.graph.loc[point]
+
+            else:
+                frame = self.graph.loc[point]
         else:
             frame = self.graph.iloc[-1]
+            point = frame.name
 
-        kwargs = {'rate': data['close'].loc[frame.name]}
+        # hack to get function working.
+        # For some reason a sequence is getting passed to individual check functions instead of a primitive value
+        _rate = data['close'].loc[point]
+        if hasattr(_rate, '__iter__'):
+            kwargs = {'rate': _rate[0]}
+        else:
+            kwargs = {'rate': _rate}
+
         signals = [indicator.check(frame, **kwargs) for indicator in self.data]
         # TODO: use dynamic number of array length
         if signals[0] == signals[1] == signals[2]:

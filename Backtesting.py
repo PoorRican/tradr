@@ -73,7 +73,7 @@ class Backtesting(object):
         msg = "Beginning to process data"
         logging.info(msg)
         print(msg)
-        frames = pd.date_range(start, end, freq=freq)
+        frames = pd.date_range(start, end, freq=freq, tz='US/Pacific')
         for i, frame in enumerate(frames):
             # TODO: enable multithreading
             self.print_progress(i)

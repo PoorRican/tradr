@@ -1,5 +1,6 @@
 from math import floor
 import pandas as pd
+from pytz import timezone
 from typing import Mapping, Optional, NoReturn, Sequence
 
 from core.markets import Market
@@ -106,7 +107,8 @@ class TrendDetector(object):
     def _fetch_trends(self, point: pd.Timestamp = None) -> Mapping[str, 'TrendMovement']:
         trends: Mapping['str': 'TrendMovement'] = {}
         for freq in self._frequencies:
-            result: Signal = self._indicators[freq].check(self.candles(freq), point)
+            _freq = self.market.translate_period(freq)      # `DateOffset` conversion
+            result: Signal = self._indicators[freq].check(self.candles(freq), point, freq=_freq)
             trends[freq] = TrendMovement(result)
         return trends
 
@@ -138,6 +140,10 @@ class TrendDetector(object):
         """
         if not point:
             point = self._candles.iloc[-1].name
+
+        # remove `freq` value to prevent `KeyError`
+        # TODO: is reusing the name going to affect original `point`?
+        point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
 
         results = self._fetch_trends(point)
         consensus = self._determine_consensus(list(results.values()))

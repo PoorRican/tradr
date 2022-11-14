@@ -1,6 +1,7 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from datetime import datetime
 import pandas as pd
+from pytz import timezone
 from typing import Union, Tuple, Sequence
 
 from analysis.financials import FinancialsMixin
@@ -85,7 +86,7 @@ class OscillatingStrategy(FinancialsMixin, ABC):
             `IndexError` if `orders` is empty.
         """
         last_order = self.orders.iloc[-1]
-        now = datetime.now()
+        now = datetime.now(tz=timezone('US/Pacific'))
         diff = now - last_order.name
         period = pd.to_timedelta(self.timeout)
 
