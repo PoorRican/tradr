@@ -34,17 +34,20 @@ class OscillatingStrategy(FinancialsMixin, ABC):
         Returns:
             `true` if `signal`  decision values.
         """
-        if self.orders.empty:
-            # force buy for first trade
+        if self.orders.empty:           # first trade must be buy
+            # TODO: check if `assets` is 0
             return signal == Signal.BUY
 
         if signal:
             last_order = self.orders.iloc[-1]
-            if last_order['side'] == signal == Signal.BUY and self._remaining and timeout:
-                # Allow repeated buys on timeout
+
+            # prevent more buy orders when there are too many incomplete orders
+            if self._remaining == 0 and signal == Signal.BUY:
+                return False
+            # Allow repeated buys on timeout
+            elif last_order['side'] == signal == Signal.BUY and self._remaining and timeout:
                 inactive = self._check_timeout()
                 if inactive:
-                    # Add repeated buy to `unpaired_buys`
                     self._handle_inactive(last_order)
                 return inactive
             return last_order.side != signal
@@ -57,11 +60,17 @@ class OscillatingStrategy(FinancialsMixin, ABC):
         Oscillation of trade types is executed here. Duplicate trade type is not returned if a new signal is
         generated.
 
+        Number of incomplete (outstanding) orders is limited here. If there are no remaining allowed orders
+        (as defined by `_remaining`) then False is returned.
+
         Notes:
             `self.indicators.develop()` needs to be called beforehand.
         """
         if not point:
             point = self.market.data.iloc[-1].name
+
+        if self._remaining <= 1:
+            pass
 
         signal: Signal = self.indicators.check(self.market.data, point)
         if self._oscillation(signal):

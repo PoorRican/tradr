@@ -143,9 +143,9 @@ class TrendDetector(object):
 
         # remove `freq` value to prevent `KeyError`
         # TODO: is reusing the name going to affect original `point`?
-        point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
+        _point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
 
-        results = self._fetch_trends(point)
+        results = self._fetch_trends(_point)
         consensus = self._determine_consensus(list(results.values()))
 
         return MarketTrend(consensus, scalar=self._determine_scalar())
@@ -155,7 +155,7 @@ class TrendDetector(object):
         """ Return the most common value in a dict containing a list of returned results """
         counts = {}
         for v in TrendMovement.__members__.values():
-            counts[v] = list(values).count(v)
+            counts[v] = values.count(v)
         _max = max(counts.values())
         i = list(counts.values()).index(_max)
         winner = list(counts.keys())[i]

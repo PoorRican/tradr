@@ -1,6 +1,7 @@
 from abc import ABC
+import logging
 import pandas as pd
-from typing import NoReturn, Union
+from typing import NoReturn
 from warnings import warn
 
 from strategies.strategy import Strategy
@@ -91,21 +92,27 @@ class FinancialsMixin(Strategy, ABC):
         return self.order_count - len(self.incomplete)
 
     @property
-    def starting(self) -> Union[float, None]:
-        """ Amount of capitol to use for a trade.
+    def starting(self) -> float:
+        """ Amount of capitol to use for a buying assets.
 
-        This fraction is dynamically calculated due to the assumption that order might remain incomplete. Flexibility
-        is desired when placing a new order.
+        Value is computed dynamically so that trades grow larger as the amount of available capitol increases. A
+        fraction of available capitol is used instead of spending all available to protect against trading inactivity
+        during a price drop.
+
+        Notes:
+            Since the returned value is used when buying assets, a warning is raised and logged when `_remaining` equals
+            to 0.
+
 
         Returns:
-                Amount of capitol to use when beginning to calculate final trade amount. `None` is returned where there
-                `_remaining` returns 0 and therefore no more trades should be executed.
+                Amount of capitol to use when beginning to calculate final trade amount.
         """
-        _remaining = self._remaining
-        if _remaining:
-            return self.capitol / self._remaining
+        if self._remaining == 0:
+            msg = '`starting` accessed while buying is restricted (`_remaining` == 0)'
+            warn(msg)
+            logging.warning(msg)
 
-        return None
+        return self.capitol / self.order_count
 
     def pnl(self) -> float:
         # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning
@@ -148,7 +155,7 @@ class FinancialsMixin(Strategy, ABC):
                 logging.warning(msg)
 
     def unpaired(self) -> pd.DataFrame:
-        """ Select of unpaired orders by cross-referencing `unpaired_buys`.
+        """ Select of unpaired orders by cross-referencing `incomplete`.
 
         This retrieves orders data whose assets have not been sold yet. Used during calculation of pnl, and during
         normal trading operation to attempt sale of unsold assets and to clear `incomplete` when assets are sold.
@@ -163,7 +170,7 @@ class FinancialsMixin(Strategy, ABC):
 
         Args:
             rate:
-                Select rows whose rate is <= given `rate`. Since buy orders cannot be sold at a rate lower than the
+                Select rows whose rate is <= given `rate`. Since buy orders should be sold at a rate lower than the
                 buy price, rate is used to select incomplete order rows when determining amount of available assets
                 should be sold.
             original:
@@ -213,11 +220,11 @@ class FinancialsMixin(Strategy, ABC):
         assert type(row) is pd.Series
         assert row['side'] == Side.BUY
 
-        if row['id'] in self.incomplete['id']:
+        if row['id'] in self.incomplete['id'].values:
             warn('Adding duplicate id found in `incomplete`')
 
         _row = pd.DataFrame([[row['amt'], row['rate'], row['id']]], columns=['amt', 'rate', 'id'])
-        self.incomplete = pd.concat([self.incomplete, row],
+        self.incomplete = pd.concat([self.incomplete, _row],
                                     ignore_index=True)
 
     def _clean_incomplete(self, trade: SuccessfulTrade):
@@ -270,23 +277,21 @@ class FinancialsMixin(Strategy, ABC):
         TODO:
             -   Track related orders
         """
-
-        # deduct from oldest unpaired order
-        unpaired.sort_index(inplace=True)
+        assert trade.side == Side.SELL
 
         # account for assets acquired from previous buy
         last_buy = self.orders[self.orders['side'] == Side.BUY].iloc[-1]
-        amt = trade.amt - last_buy['amt']
+        excess = trade.amt - last_buy['amt']
 
         # deduct excess from unpaired orders
         _drop = []              # rows to drop
         for index, order in unpaired.iterrows():
-            if amt >= order['amt']:
-                _drop.append(order.name)
-                amt -= order['amt']
+            if excess >= order['amt']:
+                _drop.append(index)
+                excess -= order['amt']
             else:
                 # update amount remaining.
-                _remaining = order['amt'] - amt
+                _remaining = order['amt'] - excess
                 self.incomplete.loc[self.incomplete['id'] == order['id'], 'amt'] = _remaining
 
         self.incomplete.drop(index=_drop, inplace=True)

@@ -114,23 +114,35 @@ class FinancialsMixinTestCase(unittest.TestCase):
     def test_handle_inactive(self):
         self.assertTrue(self.strategy.incomplete.empty)
 
-        row = pd.DataFrame({'amt': [5], 'rate': [5], 'id': [5]})
+        row = pd.Series({'amt': 5, 'rate': 5, 'id': 5, 'side': Side.BUY})
+
         self.strategy._handle_inactive(row)
 
-        self.assertTrue(row['id'].isin(self.strategy.incomplete['id'])[0])
+        self.assertTrue(row['id'] in self.strategy.incomplete['id'].values)
 
         # check that values remain after second addition
-        row2 = pd.DataFrame({'amt': [2], 'rate': [2], 'id': [2]})
+        row2 = pd.Series({'amt': 2, 'rate': 2, 'id': 2, 'side': Side.BUY})
         self.strategy._handle_inactive(row2)
 
-        self.assertTrue(row['id'].isin(self.strategy.incomplete['id'])[0])
-        self.assertTrue(row2['id'].isin(self.strategy.incomplete['id'])[0])
+        self.assertTrue(row['id'] in self.strategy.incomplete['id'].values)
+        self.assertTrue(row2['id'] in self.strategy.incomplete['id'].values)
 
         self.assertEqual(len(self.strategy.incomplete), 2)
 
-        with self.assertRaises(AssertionError):
-            self.strategy._handle_inactive(pd.concat([row, row]))
+        # ============================== #
+        # assert exceptions and warnings #
 
+        # side must be `BUY
+        with self.assertRaises(AssertionError):
+            invalid_row = pd.Series({'amt': 5, 'rate': 5, 'id': 5, 'side': Side.SELL})
+            self.strategy._handle_inactive(invalid_row)
+
+        # row must be `Series`
+        with self.assertRaises(AssertionError):
+            # noinspection PyTypeChecker
+            self.strategy._handle_inactive(pd.DataFrame())
+
+        # warn upon adding duplicates
         with self.assertWarns(Warning):
             self.strategy._handle_inactive(row)
 
