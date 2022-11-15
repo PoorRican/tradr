@@ -1,5 +1,7 @@
 from abc import ABC
 import logging
+import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
 import pandas as pd
 from typing import NoReturn
 from warnings import warn
@@ -295,3 +297,17 @@ class FinancialsMixin(Strategy, ABC):
                 self.incomplete.loc[self.incomplete['id'] == order['id'], 'amt'] = _remaining
 
         self.incomplete.drop(index=_drop, inplace=True)
+
+    def plot(self):
+        """ Plot trade enter and exit points as an overlay to market data.
+
+        TODO:
+            - subgraph which shows amounts traded as a bar graph
+        """
+        o = self.orders
+        sells = o[o['side'] == -1]
+        buys = o[o['side'] == 1]
+        plt.figure(figsize=[50, 25], dpi=250)
+        plt.plot(self.market.data.index, self.market.data['close'], color=to_rgba('red', 0.5) )
+        plt.scatter(buys.index, buys['rate'], buys['amt'] * 5000, marker="^", color=to_rgba('green', .8))
+        plt.scatter(sells.index, sells['rate'], sells['amt'] * 5000, marker="v", color=to_rgba('blue', 1))
