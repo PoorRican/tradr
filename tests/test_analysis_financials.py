@@ -34,6 +34,12 @@ class FinancialsMixinTestCase(unittest.TestCase):
         self.strategy._adjust_assets(trade)
         self.assertEqual(self.strategy.assets, 7)
 
+        # assert warning is raised when set to negative value
+        with self.assertWarns(Warning):
+            trade = SuccessfulTrade(8, 5, Side.SELL, None)
+            self.strategy._adjust_assets(trade)
+            self.assertEqual(self.strategy.assets, -1)
+
     def test_adjust_capitol(self):
         self.strategy.capitol = 25
 
@@ -44,6 +50,12 @@ class FinancialsMixinTestCase(unittest.TestCase):
         trade = SuccessfulTrade(3, 10, Side.SELL, None)
         self.strategy._adjust_capitol(trade)
         self.assertEqual(self.strategy.capitol, 30)
+
+        # assert warning is raised when set to negative value
+        with self.assertWarns(Warning):
+            trade = SuccessfulTrade(8, 5, Side.BUY, None)
+            self.strategy._adjust_capitol(trade)
+            self.assertEqual(-10, self.strategy.capitol)
 
     def test_check_unpaired(self):
         """ Assert that orders with rates lower than given value are returned """

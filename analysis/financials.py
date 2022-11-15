@@ -124,6 +124,11 @@ class FinancialsMixin(Strategy, ABC):
 
         if trade.side is Side.BUY:
             self.capitol -= trade.cost
+
+            if self.capitol < 0:
+                msg = "Accumulated capitol has been set to a negative value"
+                warn(msg)
+                logging.warning(msg)
         else:
             self.capitol += trade.cost
 
@@ -136,6 +141,11 @@ class FinancialsMixin(Strategy, ABC):
             self.assets += trade.amt
         else:
             self.assets -= trade.amt
+
+            if self.assets < 0:
+                msg = "Assets amount has been set to a negative value"
+                warn(msg)
+                logging.warning(msg)
 
     def unpaired(self) -> pd.DataFrame:
         """ Select of unpaired orders by cross-referencing `unpaired_buys`.
