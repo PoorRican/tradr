@@ -1,11 +1,18 @@
 import pandas as pd
+from typing import Sequence, Union
+from warnings import warn
+
+from analysis.trend import TrendDetector
+from models.signals import MACDRow, BBANDSRow, STOCHRSIRow
+from models.trades import Side
+from models.trend import TrendMovement
 from strategies.OscillatingStrategy import OscillatingStrategy
-from typing import Union, Tuple
-from talib import STOCHRSI, MACD, BBANDS
 
 
 class ThreeProngAlt(OscillatingStrategy):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
+
+    Foresight from `TrendDetector` is incorporated into `_calc_amount()` and `_is_profitable()` is overwritten.
 
     A buy or sale is made based on lt/gt comparisons of all three signals, and theoretically
     seems adept at trading with an extremely volatile stock like Bitcoin. Each buy costs the same
@@ -31,7 +38,7 @@ class ThreeProngAlt(OscillatingStrategy):
     """
     name = 'ThreeProngAlt'
 
-    def __init__(self, threshold: float, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
 
         Args:
@@ -43,15 +50,17 @@ class ThreeProngAlt(OscillatingStrategy):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        super().__init__(*args, **kwargs)
+        _indicators: Sequence = [BBANDSRow, MACDRow, STOCHRSIRow]
+        super().__init__(indicators=_indicators, *args, **kwargs)
 
-        self.threshold = threshold
+        self.detector = TrendDetector(self.market)
+        """ Sensor-like class that detects market trends through the `characterize()` method.
+        
+        Calculation of indicator data should be performed by a threaded-routine managed by startup level scheduler.
+        Therefore, functions like `characterize()` must be asynchronous and a lock-flag placed on container.
+        """
 
-        self.indicators = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
-                                                'macd', 'macdsignal', 'macdhist',
-                                                'fastk', 'fastd'])
-
-    def _calc_rate(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """
         Rate is calculated by open, close, and high or low price.
 
@@ -69,123 +78,88 @@ class ThreeProngAlt(OscillatingStrategy):
 
         Todo:
             - Integrate weights, so that extreme values do not skew
+            - Incorporate orderbook into average
         """
-        assert side in ('buy', 'sell')
-        if side == 'buy':
+        assert side in (Side.BUY, Side.SELL)
+        if side == Side.BUY:
             third = 'high'
         else:
             third = 'low'
 
         return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
-    def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         if self.orders.empty:
-            assert side == 'buy'
-            last_order = {'amt': 0, 'side': 'sell'}
+            assert side == Side.BUY
+            last_order = {'amt': 0, 'side': Side.SELL}
         else:
             last_order = self.orders.iloc[-1]
 
         rate = self._calc_rate(extrema, side)
-        if side == 'sell':
-            other = self._check_unpaired(rate)
-            return last_order['amt'] + other['amt'].sum()
-        if side == 'buy':
-            # TODO: amount should increase as total gain exceeds 125% of `starting`
-            # TODO: amount bought should not exceed amount of starting capital and should
-            #   take into account unpaired buy trades.
-            return self.starting / rate
+        if side == Side.SELL:
+            incomplete = self._check_unpaired(rate)
 
-    def _is_profitable(self, amount: float, rate: float, side: str) -> bool:
+            total = last_order['amt'] + incomplete['amt'].sum()
+
+            # modulate amount based on market trend
+
+            # TODO: add partially sold buys when orders post using this
+
+            _trend = self.detector.characterize(extrema)
+            # sell more during strong uptrend
+            if _trend.trend is TrendMovement.UP:
+                return total * _trend.scalar
+            # sell less during strong downtrend
+            elif _trend.trend is TrendMovement.DOWN:
+                return total / _trend.scalar
+
+            if total > self.assets:
+                warn("Calculated total of assets to sell exceeds actual total")
+                return self.assets
+            return total
+
+        if side == Side.BUY:
+            amt = self.starting / rate
+
+            # modulate amount based on market trend
+            _trend = self.detector.characterize(extrema)
+
+            # buy less during strong uptrend; buy more during strong downtrend
+            if _trend.trend is TrendMovement.UP:
+                return amt / _trend.scalar
+            elif _trend.trend is TrendMovement.DOWN:
+                return amt * _trend.scalar
+
+            if self.capitol < amt * rate:
+                warn("Calculated amount of assets to buy exceeds amount of available capitol")
+                return self.capitol / rate
+            return amt
+
+    def _is_profitable(self, amount: float, rate: float, side: Side,
+                       extrema: Union['pd.Timestamp', str] = None) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
 
-        Always buy according to signals.
+        Incorrect trades are rejected during strong trends
+
+        Always buy according to signals. However, when selling during a strong uptrend, threshold is exponentially
+        multiplied by `MarketTrend.scalar`. This is because significantly greater profit is expected during a strong
+        uptrend.
         """
-        assert side in ('buy', 'sell')
-        if side == 'buy':
+        assert side in (Side.BUY, Side.SELL)
+
+        # prevent incorrect trades during strong trend
+        _trend = self.detector.characterize(extrema)
+        if _trend.scalar > 3 and \
+           (_trend.trend is TrendMovement.UP and side is Side.BUY) or \
+           (_trend.trend is TrendMovement.DOWN and side is Side.SELL):
+            return False
+
+        if side == Side.BUY:
             return True
         else:
-            return self._calc_profit(amount, rate, side) >= self.threshold
-
-    def _check_bb(self, rate: float) -> Union[str, 'False']:
-        """ Check that price is close to or beyond edge of Bollinger Bands
-
-        Args:
-            rate: Current ticker price
-
-        Returns:
-            `buy`/`sell`: Signal interpreted from Bollinger Bands.
-        """
-
-        frame = self.indicators.iloc[-1][['lowerband', 'middleband', 'upperband']]
-        buy = frame['middleband'] - frame['lowerband']
-        sell = frame['upperband'] - frame['middleband']
-
-        buy *= .5
-        sell *= .5
-
-        buy += frame['lowerband']
-        sell += frame['middleband']
-
-        if rate <= buy:
-            return 'buy'
-        elif rate >= sell:
-            return 'sell'
-        else:
-            return False
-
-    def _check_macd(self) -> Union[str, 'False']:
-        """ Get signal interpretation from MACD indicator
-
-        Returns:
-            `buy`/`sell`: Signal interpreted from Bollinger Bands.
-         """
-        frame = self.indicators.iloc[-1]['macdhist']
-        if frame < 0:
-            return 'buy'
-        elif frame > 0:
-            return 'sell'
-        else:
-            return False
-
-    def _check_stochrsi(self) -> Union[str, 'False']:
-        """ Get signal from Stochastic RSI.
-
-        Returns:
-            'buy': if K and D are below 20 with K < D
-            'sell': if K and D are above 80 with K > D
-            Otherwise, `False` is returned
-        """
-        frame = self.indicators.iloc[-1][['fastk', 'fastd']]
-        if frame['fastk'] < 20 and 20 > frame['fastd'] > frame['fastk']:
-            return 'buy'
-        elif frame['fastk'] > 80 and 80 < frame['fastd'] < frame['fastk']:
-            return 'sell'
-        else:
-            return False
-
-    def _develop_signals(self, point: pd.Timestamp = None) -> pd.DataFrame:
-        d = pd.DataFrame(columns=['upperband', 'middleband', 'lowerband',
-                                  'macd', 'macdsignal', 'macdhist',
-                                  'fastk', 'fastd'])
-        if point:
-            data = self.market.data['close'].loc[:point]
-        else:
-            data = self.market.data['close']
-
-        d['upperband'], d['middleband'], d['lowerband'] = BBANDS(data, 20)
-        d['macd'], d['macdsignal'], d['macdhist'] = MACD(data, 6, 26, 9)
-        d['fastk'], d['fastd'] = STOCHRSI(data, 14, 3, 3)
-
-        return d
-
-    def _check_signals(self, extrema: pd.DataFrame) -> Union[str, 'False']:
-        signals = (
-            self._check_stochrsi(),
-            self._check_bb(extrema['close']),
-            self._check_macd(),
-        )
-
-        if signals[0] == signals[1] == signals[2]:
-            return signals[0]
-
-        return False
+            # handle sell
+            if _trend.trend == TrendMovement.UP:
+                _min_profit = self.threshold * _trend.scalar * _trend.scalar
+            else:
+                _min_profit = self.threshold
+            return self._calc_profit(amount, rate) >= _min_profit
