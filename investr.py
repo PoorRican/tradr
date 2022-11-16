@@ -1,4 +1,4 @@
-from core.market import Market
+from markets.Market import Market
 from strategies.Strategy import Strategy
 
 
@@ -9,7 +9,7 @@ class Investr(object):
 
     @property
     def market(self) -> Market:
-        return self.strategy.platform
+        return self.strategy.market
 
     def run(self):
         self.market.update()

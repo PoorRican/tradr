@@ -76,7 +76,7 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             third = 'low'
 
-        return self.platform.data.loc[extrema][['open', 'close', third]].mean()
+        return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
         if self.orders.empty:
@@ -168,9 +168,9 @@ class ThreeProngAlt(OscillatingStrategy):
                                   'macd', 'macdsignal', 'macdhist',
                                   'fastk', 'fastd'])
         if point:
-            data = self.platform.data['close'].loc[:point]
+            data = self.market.data['close'].loc[:point]
         else:
-            data = self.platform.data['close']
+            data = self.market.data['close']
 
         d['upperband'], d['middleband'], d['lowerband'] = BBANDS(data, 20)
         d['macd'], d['macdsignal'], d['macdhist'] = MACD(data, 6, 26, 9)

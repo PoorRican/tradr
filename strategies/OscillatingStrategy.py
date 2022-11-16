@@ -42,38 +42,26 @@ class OscillatingStrategy(Strategy, ABC):
         Returns:
             `true` if `signal`  decision values.
         """
-        assert signal in (False, 'sell', 'buy')
-
         if self.orders.empty:
             # force buy for first trade
             return signal == 'buy'
 
         if signal:
             last_order = self.orders.iloc[-1]
-
-            # check timeout for when both last order and signal equal 'buy'
             if last_order['side'] == signal == 'buy':
                 timeout = self._check_timeout()
                 if timeout:
-                    # add last buy to `unpaired_buys`
                     row = pd.Series([last_order['id']])
                     self.unpaired_buys = pd.concat([self.unpaired_buys, row],
                                                    ignore_index=True, names=['id\'s'])
                 return timeout
-            # occurs when `last_order` or `signal` is not 'buy'
             return last_order.side != signal
 
         return signal
 
     def _post_sale(self, trade: SuccessfulTrade):
         """ Clean `unpaired_buys` after successful sale.
-
-        After each sale, see if any `unpaired_buys` qualified to be sold. Remove any that did qualify (rate lower than
-        sale price). It is assumed that `_calc_amount()` includes sum of `Trade.amt` that reflects `unpaired_buys`.
-
-        See Also:
-            _check_unpaired(), `_calc_amount()`
-        """
+        Assumption is that `trade.related` will be populated. """
 
         if trade.side == 'sell':
             unpaired = self._check_unpaired(trade.rate)
@@ -91,9 +79,9 @@ class OscillatingStrategy(Strategy, ABC):
         self.indicators = self._develop_signals(point)
 
         if point:
-            extrema = self.platform.data.loc[point]
+            extrema = self.market.data.loc[point]
         else:
-            extrema = self.platform.data.iloc[-1]
+            extrema = self.market.data.iloc[-1]
 
         signal = self._check_signals(extrema)
         if self._oscillation(signal):
@@ -144,7 +132,6 @@ class OscillatingStrategy(Strategy, ABC):
         Raises:
             `IndexError` if `orders` is empty.
         """
-        assert len(self.orders) > 0
         last_order = self.orders.iloc[-1]
         if last_order['side'] == 'buy':
             now = datetime.now()
@@ -153,3 +140,4 @@ class OscillatingStrategy(Strategy, ABC):
 
             return diff > period
         return False
+

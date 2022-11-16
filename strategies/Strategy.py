@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 import logging
 
 from models.trades import Trade, SuccessfulTrade, add_to_df, truncate
-from core.market import Market
+from markets.Market import Market
 from models.data import DATA_ROOT
 
 
@@ -37,13 +37,13 @@ class Strategy(ABC):
     """
     name = 'base'
 
-    def __init__(self, starting_fiat: float, platform):
+    def __init__(self, starting_fiat: float, market: Market):
         self.orders = SuccessfulTrade.container()
         self.failed_orders = Trade.container()
 
         self.starting = starting_fiat
 
-        self.platform = platform
+        self.market = market
 
         self.load()
 
@@ -70,7 +70,7 @@ class Strategy(ABC):
         assert last_trade['side'] != side
 
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
-        return gain - self.platform.calc_fee()
+        return gain - self.market.calc_fee()
 
     def _post_sale(self, trade: SuccessfulTrade):
         """ Post sale processing of trade before adding to local container. """
@@ -94,7 +94,7 @@ class Strategy(ABC):
         rate = self._calc_rate(extrema, side)
         trade = Trade(amount, rate, side)
 
-        response = self.platform.place_order(trade)
+        response = self.market.place_order(trade)
         if response:
             self._post_sale(response)
             add_to_df(self, 'orders', extrema, response)

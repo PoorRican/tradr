@@ -1,6 +1,6 @@
 import pandas as pd
 from strategies.Strategy import Strategy
-from core.market import Market
+from markets.Market import Market
 from typing import Union, Tuple
 
 
@@ -50,7 +50,7 @@ class StaticAlternatingStrategy(Strategy):
         else:
             raise ValueError('Invalid value for `side`')
 
-        return self.platform.data.loc[extrema][['open', 'close', third]].mean()
+        return self.market.data.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: str) -> float:
         return self.amount
@@ -78,9 +78,9 @@ class StaticAlternatingStrategy(Strategy):
             return self._calc_profit(amount, rate, side) >= self.threshold
         else:
             if extrema:
-                data = self.platform.data.loc[:extrema]
+                data = self.market.data.loc[:extrema]
             else:
-                data = self.platform.data
+                data = self.market.data
 
             # return False if there is not enough market data (this occurs during backtesting)
             if len(data) > 2:
@@ -123,7 +123,7 @@ class StaticAlternatingStrategy(Strategy):
         if point:
             extrema = point
         else:
-            extrema = self.platform.data.iloc[-1].name
+            extrema = self.market.data.iloc[-1].name
 
         rate = self._calc_rate(extrema, side)
         amount = self._calc_amount(extrema, side)
