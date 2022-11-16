@@ -82,12 +82,17 @@ class MACDRow(Indicator):
 
     @staticmethod
     def check(frame: pd.DataFrame, *args, **kwargs) -> Signal:
-        _ = frame['macdhist']
-        if hasattr(_, '__iter__'):
-            _ = _[0]
-        if _ < 0:
+        signal = frame['macdsignal']
+        macd = frame['macd']
+
+        if hasattr(signal, '__iter__'):
+            signal = signal[0]
+        if hasattr(macd, '__iter__'):
+            macd = macd[0]
+
+        if macd < signal < 0:
             return Signal.BUY
-        elif _ > 0:
+        elif macd > signal > 0:
             return Signal.SELL
         else:
             return Signal.HOLD
