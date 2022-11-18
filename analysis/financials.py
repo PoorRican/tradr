@@ -298,16 +298,23 @@ class FinancialsMixin(Strategy, ABC):
 
         self.incomplete.drop(index=_drop, inplace=True)
 
-    def plot(self):
+    def plot(self, size: int = 5000):
         """ Plot trade enter and exit points as an overlay to market data.
 
+        Args:
+            size:
+                Scalar multiplier for marker size. Since marker size corresponds to amount of assets traded, this should
+                be larger for assets of larger values as for a fixed price asset value and amount are inversely
+                proportional (and therefore may be less than one).
+
         TODO:
-            - subgraph which shows amounts traded as a bar graph
+            - subgraph which shows assets/capital
+            - dynamically calculate scalar for marker size
         """
         o = self.orders
         sells = o[o['side'] == -1]
         buys = o[o['side'] == 1]
         plt.figure(figsize=[50, 25], dpi=250)
-        plt.plot(self.market.data.index, self.market.data['close'], color=to_rgba('red', 0.5) )
-        plt.scatter(buys.index, buys['rate'], buys['amt'] * 5000, marker="^", color=to_rgba('green', .8))
-        plt.scatter(sells.index, sells['rate'], sells['amt'] * 5000, marker="v", color=to_rgba('blue', 1))
+        plt.plot(self.market.data.index, self.market.data['close'], color=to_rgba('red', 0.5))
+        plt.scatter(buys.index, buys['rate'], buys['amt'] * size, marker="^", color=to_rgba('green', .8))
+        plt.scatter(sells.index, sells['rate'], sells['amt'] * size, marker="v", color=to_rgba('blue', 1))
