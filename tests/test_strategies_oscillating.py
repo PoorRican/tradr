@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd
+from pytz import timezone
 
 from core.markets import GeminiMarket, SimulatedMarket
 from models.signals import Signal, IndicatorContainer
@@ -9,12 +10,12 @@ from strategies.OscillatingStrategy import OscillatingStrategy
 
 
 class MainOscillatingStrategyTests(unittest.TestCase):
-    @patch("strategies.OscillatingStrategy.__abstractmethods__", set())
+    @patch("strategies.OscillatingStrategy.OscillatingStrategy.__abstractmethods__", set())
     def setUp(self) -> None:
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
         self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=())
+                                            indicators=(), threshold=0.1, capitol=100)
 
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
@@ -25,7 +26,7 @@ class MainOscillatingStrategyTests(unittest.TestCase):
         import datetime as dt
 
         # check under timeout
-        then = dt.datetime.now() - dt.timedelta(hours=5)
+        then = dt.datetime.now(tz=timezone('US/Pacific')) - dt.timedelta(hours=5)
         self.strategy.orders = pd.DataFrame(index=[then])
         self.assertFalse(self.strategy._check_timeout())
 
@@ -58,17 +59,17 @@ class MainOscillatingStrategyTests(unittest.TestCase):
         import datetime as dt
 
         then = dt.datetime.now() - dt.timedelta(hours=7)
-        self.strategy.orders = pd.DataFrame({'side': [Signal.BUY], 'id': 'id'}, index=[then])
+        self.strategy.orders = pd.DataFrame({'side': [Signal.BUY], 'id': 'id', 'amt': 0, 'rate': 0}, index=[then])
         self.assertTrue(self.strategy._oscillation(Signal.BUY))
 
 
 class DeterminePositionTests(unittest.TestCase):
-    @patch("strategies.OscillatingStrategy.__abstractmethods__", set())
+    @patch("strategies.OscillatingStrategy.OscillatingStrategy.__abstractmethods__", set())
     def setUp(self) -> None:
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
         self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=())
+                                            indicators=(), threshold=0.1, capitol=100)
 
     def test_point(self):
         """ Assert passed argument and default value are handled correctly """
