@@ -6,6 +6,6 @@ pandas==1.5.1
 jupyter
 TA-lib==0.4.25
 apscheduler==3.9.1
-pyyaml
-
+pyyaml~=6.0
 urllib3~=1.26.2
+pytz==2022.6
