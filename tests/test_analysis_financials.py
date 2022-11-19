@@ -13,13 +13,13 @@ class FinancialsMixinTestCase(unittest.TestCase):
         with patch('core.markets.Market') as cls:
             self.market = cls()
 
-        self.strategy = FinancialsMixin(self.market, threshold=.1, capitol=500, assets=0)
+        self.strategy = FinancialsMixin(self.market, threshold=.1, capital=500, assets=0)
 
     def test_init(self):
         self.assertIsInstance(self.strategy, Strategy)
 
         self.assertEqual(self.strategy.threshold, .1)
-        self.assertEqual(self.strategy.capitol, 500)
+        self.assertEqual(self.strategy.capital, 500)
         self.assertEqual(self.strategy.assets, 0)
         self.assertEqual(self.strategy.order_count, 4)
 
@@ -41,21 +41,21 @@ class FinancialsMixinTestCase(unittest.TestCase):
             self.assertEqual(self.strategy.assets, -1)
 
     def test_adjust_capitol(self):
-        self.strategy.capitol = 25
+        self.strategy.capital = 25
 
         trade = SuccessfulTrade(5, 5, Side.BUY, None)
         self.strategy._adjust_capitol(trade)
-        self.assertEqual(self.strategy.capitol, 0)
+        self.assertEqual(self.strategy.capital, 0)
 
         trade = SuccessfulTrade(3, 10, Side.SELL, None)
         self.strategy._adjust_capitol(trade)
-        self.assertEqual(self.strategy.capitol, 30)
+        self.assertEqual(self.strategy.capital, 30)
 
         # assert warning is raised when set to negative value
         with self.assertWarns(Warning):
             trade = SuccessfulTrade(8, 5, Side.BUY, None)
             self.strategy._adjust_capitol(trade)
-            self.assertEqual(-10, self.strategy.capitol)
+            self.assertEqual(-10, self.strategy.capital)
 
     def test_check_unpaired(self):
         """ Assert that orders with rates lower than given value are returned """
@@ -159,7 +159,7 @@ class FinancialsMixinTestCase(unittest.TestCase):
         self.assertEqual(2, self.strategy.incomplete.iloc[1].amt)
 
     def test_starting(self):
-        self.strategy.capitol = 1000
+        self.strategy.capital = 1000
         self.strategy.order_count = 10
         self.strategy.incomplete = []
         self.assertEqual(self.strategy.starting, 100)

@@ -130,9 +130,9 @@ class ThreeProngAlt(OscillatingStrategy):
             elif _trend.trend is TrendMovement.DOWN:
                 return amt * _trend.scalar
 
-            if self.capitol < amt * rate:
-                warn("Calculated amount of assets to buy exceeds amount of available capitol")
-                return self.capitol / rate
+            if self.capital < amt * rate:
+                warn("Calculated amount of assets to buy exceeds amount of available capital")
+                return self.capital / rate
             return amt
 
     def _is_profitable(self, amount: float, rate: float, side: Side,
