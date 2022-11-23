@@ -17,8 +17,9 @@ class Market(ABC):
     """
 
     valid_freqs: Tuple[str, ...]
+    asset_pairs: Tuple[str, ...]
 
-    def __init__(self):
+    def __init__(self, symbol: str = None, freq: str = None):
         self.data = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
         """DataFrame: container for candle data.
         
@@ -27,6 +28,13 @@ class Market(ABC):
         Notes:
             Should have `source` and `freq` set via the `DataFrame.attrs` convention.
         """
+        if symbol:
+            assert symbol in self.asset_pairs
+        if freq:
+            assert freq in self.valid_freqs
+
+        self.symbol = symbol
+        self.freq = freq
 
     @abstractmethod
     def update(self):
@@ -47,7 +55,7 @@ class Market(ABC):
         pass
 
     @abstractmethod
-    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', bool]:
+    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
         """ Post order to market.
 
         Args:

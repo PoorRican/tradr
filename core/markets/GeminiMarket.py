@@ -37,7 +37,7 @@ class GeminiMarket(Market):
             Base URL for accessing all API endpoints. This should be set to `'api.sandbox.gemini.com'`
             during testing or simulation.
     """
-    name: str = 'Gemini'
+    __name__: str = 'Gemini'
     valid_freqs: tuple[str, ...] = ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day')
     # noinspection SpellCheckingInspection
     asset_pairs = set("btcusd ethbtc ethusd zecusd zecbtc zeceth zecbch zecltc bchusd bchbtc bcheth "
@@ -55,30 +55,25 @@ class GeminiMarket(Market):
                       "galusd eulusd samousd bicousd imxusd plausd iotxusd busdusd avaxusd".split(' '))
     BASE_URL: str = "https://api.gemini.com"
 
-    def __init__(self, api_key: str = None, api_secret: str = None, time_frame: str = '15m',
+    def __init__(self, api_key: str = None, api_secret: str = None, freq: str = '15m',
                  root: str = DATA_ROOT, update=True, symbol: str = 'btcusd'):
         """
         Args:
             api_key: Gemini API key
             api_secret: Gemini API secret
-            time_frame: candle frequency
+            freq: candle frequency
             root: root directory to store candle data
             update: flag to disable fetching active market data. Reads any cached file by default.
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
-        super().__init__()
-
-        assert time_frame in self.valid_freqs
-        assert symbol in self.asset_pairs
+        super().__init__(symbol, freq)
 
         if api_key and api_secret:
             self.api_key = api_key
             self.api_secret = api_secret.encode()
 
-        self.freq = time_frame
         self.root = root
-        self.symbol = symbol
 
         if update:
             self.update()

@@ -20,6 +20,10 @@ class SimulatedMarket(Market):
             self.update()
         self.orders = 0
 
+    @property
+    def __name__(self):
+        return f"Simulated_{self.model.__name__}"
+
     def _convert(self, trade: Trade, response: dict = None,) -> 'SuccessfulTrade':
         trade = SuccessfulTrade(trade.amt, trade.rate, trade.side, self.orders)
         self.orders += 1
