@@ -3,7 +3,14 @@ import requests
 from os import path
 from datetime import datetime
 
-DATA_ROOT = 'data/'
+
+def _project_root() -> str:
+    _root = path.join(__file__, path.pardir, path.pardir)
+    return path.abspath(_root)
+
+
+ROOT = _project_root()
+DATA_ROOT = f'{_project_root()}/data/'
 
 
 def json_to_df(data) -> pd.DataFrame:
@@ -12,7 +19,7 @@ def json_to_df(data) -> pd.DataFrame:
     _data = data
     for i in _data:
         i[0] = datetime.fromtimestamp(i[0] / 1000)    # convert milliseconds to seconds
-    df = pd.DataFrame(_data, columns=('dt', 'open', 'high', 'low', 'close', 'volume'))
+    df = pd.DataFrame(_data, columns=['dt', 'open', 'high', 'low', 'close', 'volume'])
     df.index = pd.DatetimeIndex(df['dt'])
     del df['dt']
     del _data

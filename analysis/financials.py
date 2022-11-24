@@ -37,8 +37,8 @@ class FinancialsMixin(Strategy, ABC):
         -   Convert `capital` and `assets` to time-series that tracks balance over time, and why values change
             (eg: user-initiated deposit, trade id)
     """
-    def __init__(self, *args, threshold: float, capital: float, assets: float = 0, order_count: int = 4, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, threshold: float, capital: float, assets: float = 0, order_count: int = 4, **kwargs):
+        super().__init__(**kwargs)
 
         self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
         """ Store for incomplete/open buy orders.

@@ -1,13 +1,20 @@
 import pandas as pd
-from os import path
+from os import path, listdir, mkdir
 from datetime import datetime
-from typing import Tuple, Union
+import numpy as np
+from typing import Tuple, Union, List
 from abc import ABC, abstractmethod
 import logging
+from yaml import safe_dump, safe_load
+from warnings import warn
 
 from models.trades import Trade, SuccessfulTrade, add_to_df, truncate, Side
 from core.market import Market
 from models.data import DATA_ROOT
+
+
+_FN_EXT = ".yml"
+_LITERALS_FN = f"literals{_FN_EXT}"
 
 
 class Strategy(ABC):
@@ -33,10 +40,18 @@ class Strategy(ABC):
         To determine the fitness and performance of the trading strategy, reporting functions show the total amount of
         assets and fiat accrued. This can be used in active implementations as well as during backtesting.
     """
-    name: str = 'base'
+    __name__: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, market: Market):
+    def __init__(self, market: Market, root: str = DATA_ROOT):
+        """
+
+        Args:
+            market:
+                Platform to use for market data and trading.
+            root:
+                Root directory to store candle data
+        """
         self.orders = SuccessfulTrade.container()
         """ History of successful orders performed by this strategy. Timestamps of extrema are used as indexes.
         
@@ -69,23 +84,83 @@ class Strategy(ABC):
                 between multiple instances of both `Strategy` and `Market`.
         """
 
-        self.load()
-
-    @property
-    def filename(self):
-        """ Filename for order data """
-        return path.join(DATA_ROOT, '%s_orders.pkl' % self.name)
+        self.root = root
 
     def load(self):
-        """ Load order data """
-        try:
-            self.orders = pd.read_pickle(self.filename)
-        except FileNotFoundError:
-            pass
+        """ Load stored attributes and sequence data from instance directory onto memory.
+
+        Notes
+            All data on memory is overwritten.
+        """
+        # TODO: load linked/stored indicator and market data/parameters
+
+        _dir = self._instance_dir
+
+        # load `_literals`. Literals should be verified (ie: not be a function)
+        with open(path.join(_dir, _LITERALS_FN), 'r') as f:
+            _literals: dict = safe_load(f)
+            for k, v in _literals.items():
+                # verify data
+                assert k in self.__dict__.keys()
+                assert type(v) in (str, int, float)
+
+                setattr(self, k, v)
+
+        _files = listdir(_dir)
+        _files.remove(_LITERALS_FN)
+        for _file in _files:
+            attr = _file.removesuffix(_FN_EXT)
+            assert hasattr(self, attr)
+
+            # TODO: verify data checksum
+
+            with open(path.join(_dir, _file), 'r') as f:
+                _dict = safe_load(f)
+
+                _df = pd.DataFrame.from_records(_dict)
+                setattr(self, attr, _df)
 
     def save(self):
-        """ Store order data """
-        self.orders.to_pickle(self.filename)
+        """ Store attributes and sequence data in instance directory
+
+        Notes:
+            Since `_instance_dir` relies on certain parameters, a factory function should initialize
+            classes based from a runtime file. This runtime file will define attributes such as strategy
+            name, market platform, and symbol, which are the essential characteristics which will differentiate
+            instances from one another. For security reasons, it might be beneficial to hash all instance directories
+            and include checksum in runtime data.
+        """
+        # TODO: somehow link/store market parameters
+        # TODO: somehow link/store indicator data
+
+        # aggregate attributes
+        _literals = {}
+        _sequence_keys: List[str, ...] = []
+        for k, v in self.__dict__.items():
+            _t = type(v)
+            if _t == str or _t == int or _t == float:
+                _literals[k] = v
+            elif _t == np.float64:              # `assets` sometimes get stored as `np.float64`
+                _literals[k] = float(v)
+            elif _t == pd.DataFrame:
+                _sequence_keys.append(k)
+
+        # TODO: implement data checksum
+
+        _dir = self._instance_dir
+
+        if not path.exists(_dir):
+            # TODO: implement mode for read/write access controls
+            mkdir(_dir)
+
+        # store literal parameters
+        with open(path.join(_dir, _LITERALS_FN), 'w') as f:
+            safe_dump(_literals, f)
+
+        # store sequence data
+        for attr in _sequence_keys:
+            with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
+                safe_dump(getattr(self, attr).to_dict(orient='records'), f)
 
     def _calc_profit(self, amount: float, rate: float) -> float:
         """ Calculates profit of a sale.
@@ -120,7 +195,7 @@ class Strategy(ABC):
         rate = self._calc_rate(extrema, side)
         trade: Trade = Trade(amount, rate, side)
 
-        successful: SuccessfulTrade = self.market.place_order(trade)
+        successful: Union[SuccessfulTrade, 'False'] = self.market.place_order(trade)
         if successful:
             self._post_sale(successful)
             add_to_df(self, 'orders', extrema, successful)
@@ -146,9 +221,11 @@ class Strategy(ABC):
         if position:
             side, extrema = position
             assert side in (Side.BUY, Side.SELL)
-            try:
-                self.orders[extrema]                # has an order been placed for given extrema?
-            except KeyError:
+            if extrema in self.orders.index:
+                msg = f"Attempted to trade ({side}) for extrema {extrema}"
+                warn(msg)
+                logging.warning(msg)
+            else:
                 if side == Side.BUY:
                     return self._buy(extrema)
                 else:
@@ -204,8 +281,9 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        accepted = self._add_order(extrema, Side.BUY)
+        accepted: SuccessfulTrade = self._add_order(extrema, Side.BUY)
         if accepted:
+            assert accepted.side == Side.BUY
             logging.info(f"Buy order at {accepted.rate} was placed at {datetime.now()}")
         return bool(accepted)
 
@@ -228,8 +306,9 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        accepted = self._add_order(extrema, Side.SELL)
+        accepted: SuccessfulTrade = self._add_order(extrema, Side.SELL)
         if accepted:
+            assert accepted.side == Side.SELL
             logging.info(f"Sell order at {accepted.rate} was placed at {datetime.now()}")
         return bool(accepted)
 
@@ -266,6 +345,7 @@ class Strategy(ABC):
 
         # Develop trend detector data
         if hasattr(self, 'detector'):
+            # TODO: `detector.update_candles()` should be executed outside
             self.detector.update_candles()
             self.detector.develop()
 
@@ -283,3 +363,12 @@ class Strategy(ABC):
             an `TypeError` from being raised when unpacking non-iterable bool.
         """
         pass
+
+    @property
+    def _instance_dir(self) -> str:
+        """ Returns directory to store instance specific data.
+
+        All dataframes are individually stored in yaml format.
+        """
+        _dir = f"{self.__name__}_{self.market.__name__}_{self.market.symbol}"
+        return path.join(self.root, _dir)

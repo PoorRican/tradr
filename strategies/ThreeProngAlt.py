@@ -36,9 +36,9 @@ class ThreeProngAlt(OscillatingStrategy):
     fast / slow length of 6 and 26 respectively, signal smoothing is 9. StochRSI uses
     K/D values of 3, with a Stochastic and RSI length of 14.
     """
-    name = 'ThreeProngAlt'
+    __name__ = 'ThreeProngAlt'
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """
 
         Args:
@@ -51,7 +51,7 @@ class ThreeProngAlt(OscillatingStrategy):
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
         _indicators: Sequence = [BBANDSRow, MACDRow, STOCHRSIRow]
-        super().__init__(indicators=_indicators, *args, **kwargs)
+        super().__init__(indicators=_indicators, **kwargs)
 
         self.detector = TrendDetector(self.market)
         """ Sensor-like class that detects market trends through the `characterize()` method.
