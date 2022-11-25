@@ -22,7 +22,7 @@ class GeminiMarket(Market):
     Contains methods and attributes that retrieves candle data, fetches current orderbook, and posts trades.
 
     Attributes:
-        name (str):
+        __name__ (str):
             Platform name. Used for setting flag attributes and filenames.
 
         valid_freqs (tuple[str, ...]):
@@ -78,9 +78,6 @@ class GeminiMarket(Market):
         if update:
             self.update()
             self.save()
-        else:
-            self.load()
-        # TODO: raise an error if there is no cache
 
     def get_fee(self) -> float:
         """ Retrieve current transaction fee.
@@ -168,7 +165,7 @@ class GeminiMarket(Market):
         Returns:
             Relative filename with candle source and interval
         """
-        return path.join(self.root, self.name + '_' + self.freq + ".pkl")
+        return path.join(self.root, self.__name__ + '_' + self.freq + ".pkl")
 
     def get_orderbook(self) -> dict:
         """ Fetch current orderbook.

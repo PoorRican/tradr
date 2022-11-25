@@ -13,7 +13,7 @@ class FinancialsMixinTestCase(unittest.TestCase):
         with patch('core.markets.Market') as cls:
             self.market = cls()
 
-        self.strategy = FinancialsMixin(self.market, threshold=.1, capital=500, assets=0)
+        self.strategy = FinancialsMixin(market=self.market, threshold=.1, capital=500, assets=0)
 
     def test_init(self):
         self.assertIsInstance(self.strategy, Strategy)

@@ -15,7 +15,7 @@ class MainOscillatingStrategyTests(unittest.TestCase):
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
         self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=(), threshold=0.1, capitol=100)
+                                            indicators=(), threshold=0.1, capital=100)
 
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
@@ -69,7 +69,7 @@ class DeterminePositionTests(unittest.TestCase):
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
         self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=(), threshold=0.1, capitol=100)
+                                            indicators=(), threshold=0.1, capital=100)
 
     def test_point(self):
         """ Assert passed argument and default value are handled correctly """

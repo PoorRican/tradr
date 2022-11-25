@@ -143,9 +143,10 @@ class TrendDetector(object):
 
         # remove `freq` value to prevent `KeyError`
         # TODO: is reusing the name going to affect original `point`?
-        _point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
+        if hasattr(point, 'timestamp'):
+            point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
 
-        results = self._fetch_trends(_point)
+        results = self._fetch_trends(point)
         consensus = self._determine_consensus(list(results.values()))
 
         return MarketTrend(consensus, scalar=self._determine_scalar())
