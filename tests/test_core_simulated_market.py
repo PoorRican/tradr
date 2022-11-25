@@ -1,7 +1,7 @@
 import unittest
 
 from models.trades import Trade, SuccessfulTrade, Side
-from core.markets import SimulatedMarket
+from core.markets.SimulatedMarket import SimulatedMarket
 
 
 class SimulatedMarketTestCases(unittest.TestCase):

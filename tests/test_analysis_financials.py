@@ -10,7 +10,7 @@ from strategies.strategy import Strategy
 class FinancialsMixinTestCase(unittest.TestCase):
     @patch("analysis.financials.FinancialsMixin.__abstractmethods__", set())
     def setUp(self) -> None:
-        with patch('core.markets.Market') as cls:
+        with patch('core.market.Market') as cls:
             self.market = cls()
 
         self.strategy = FinancialsMixin(market=self.market, threshold=.1, capital=500, assets=0)

@@ -3,7 +3,8 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 from pytz import timezone
 
-from core.markets import GeminiMarket, SimulatedMarket
+from core.markets.GeminiMarket import GeminiMarket
+from core.markets.SimulatedMarket import SimulatedMarket
 from models.signals import Signal, IndicatorContainer
 from models.trades import Side
 from strategies.OscillatingStrategy import OscillatingStrategy

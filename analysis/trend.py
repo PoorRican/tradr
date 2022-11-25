@@ -3,7 +3,7 @@ import pandas as pd
 from pytz import timezone
 from typing import Mapping, Optional, NoReturn, Sequence
 
-from core.markets import Market
+from core.market import Market
 from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow, Signal
 from models.trend import TrendMovement, MarketTrend
 
