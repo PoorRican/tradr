@@ -90,7 +90,7 @@ class DeterminePositionTests(unittest.TestCase):
         self.strategy.indicators.check = MagicMock(return_value=Signal.HOLD)
 
         # assert false when `check()` returns `Signal.HOLD`
-        self.assertFalse(self.strategy._determine_position())
+        self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
 
     def test_oscillation(self):
         """ Test when out of sync with oscillation. """
@@ -98,7 +98,7 @@ class DeterminePositionTests(unittest.TestCase):
         self.strategy.indicators.check = MagicMock(return_value=NotImplemented)
 
         # assert false when `Signal.BUY/SELL`, but `_oscillation()` is False
-        self.assertFalse(self.strategy._determine_position())
+        self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
 
     def test_not_profitable(self):
         """ Test when trade is not profitable """
@@ -107,7 +107,7 @@ class DeterminePositionTests(unittest.TestCase):
         self.strategy.indicators.check = MagicMock(return_value=Signal.SELL)
 
         # assert false when `_oscillation()` is True, but `_is_profitable()` is False
-        self.assertFalse(self.strategy._determine_position())
+        self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
 
     def test_return_structure(self):
         """ Assert correct return structure """
