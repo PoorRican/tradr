@@ -18,7 +18,7 @@ class TrendDetectorTests(unittest.TestCase):
 
         # setup detector
         _index = pd.MultiIndex.from_tuples(zip(FREQUENCIES, ('a', 'b')))
-        df = pd.DataFrame([(1, 2), (pd.NA, 4)], columns=_index)
+        df = pd.DataFrame([(1, 2), (pd.NA, 4)], index=_index)
         self.detector._candles = df
 
     def test_init_args(self):
@@ -28,7 +28,7 @@ class TrendDetectorTests(unittest.TestCase):
     def test_candles(self):
         # assert func excludes missing values
         self.assertEqual(len(self.detector.candles('freq1')), 1)
-        self.assertEqual(len(self.detector.candles('freq2')), 2)
+        self.assertEqual(len(self.detector.candles('freq2')), 0)
 
     def test_develop(self):
         # mock indicators.develop(). Return predetermined df depending on freq
@@ -66,11 +66,11 @@ class TrendDetectorTests(unittest.TestCase):
 
         # assert proper multi-index columns
         for freq in FREQUENCIES:
-            self.assertIn(freq, fetched.columns)
+            self.assertIn(freq, fetched.index)
 
         # assert returned values
         for freq in FREQUENCIES:
-            self.assertEqual(fetched[freq]['c'].iloc[1], 'test')
+            self.assertEqual(fetched.loc[freq, 'c'].iloc[1], 'test')
 
     def test_update(self):
         self.detector._fetch = MagicMock(return_value='fetched')

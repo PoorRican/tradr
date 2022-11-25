@@ -11,16 +11,16 @@ from models.trades import Side, SuccessfulTrade
 
 
 class FinancialsMixin(Strategy, ABC):
-    """ Mixin for Strategy that encapsulates management of capitol and assets held.
+    """ Mixin for Strategy that encapsulates management of capital and assets held.
 
-    Functionality mainly involves management of total amount of capitol acquired/available and loose orchestration
-    of trading parameters such as maximum open/incomplete trades allowed, or the amount of capitol to use for a single
+    Functionality mainly involves management of total amount of capital acquired/available and loose orchestration
+    of trading parameters such as maximum open/incomplete trades allowed, or the amount of capital to use for a single
     trade.
 
     Open/incomplete buy orders are managed by the `incomplete` container. Assets are considered incomplete if assets
     acquired have not been sold yet. The number of open/incomplete buy orders is limited by `order_count`.
 
-    Capitol and assets are tracked by `capitol` and `assets` respectfully. The starting capitol to use per trade is
+    Capitol and assets are tracked by `capital` and `assets` respectfully. The starting capital to use per trade is
     calculated by `starting` and its returned value shall be as the starting basis for trading in `_calc_amount()`.
 
     Methods:
@@ -34,11 +34,11 @@ class FinancialsMixin(Strategy, ABC):
                     excludes `incomplete`. Might result in a negative number if there are open/incomplete orders.
                 - growth:
     TODO:
-        -   Convert `capitol` and `assets` to time-series that tracks balance over time, and why values change
+        -   Convert `capital` and `assets` to time-series that tracks balance over time, and why values change
             (eg: user-initiated deposit, trade id)
     """
-    def __init__(self, *args, threshold: float, capitol: float, assets: float = 0, order_count: int = 4, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, threshold: float = None, capital: float = 0, assets: float = 0, order_count: int = 4, **kwargs):
+        super().__init__(**kwargs)
 
         self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
         """ Store for incomplete/open buy orders.
@@ -59,17 +59,17 @@ class FinancialsMixin(Strategy, ABC):
         
         Profit from all sell trades must be equal to or greater than this value.
         
-        Most likely will be set to less-than 1 when capitol is significantly less than exchange rate of one unit of
+        Most likely will be set to less-than 1 when capital is significantly less than exchange rate of one unit of
         asset. Since marginal changes (<5%) in price are intended to be exploited for gains, this number should be
-        set accordingly dependant on asset price and supplied capitol.
+        set accordingly dependant on asset price and supplied capital.
         """
 
-        self.capitol = capitol
-        """ Simple total of available capitol to use in buying assets.
+        self.capital = capital
+        """ Simple total of available capital to use in buying assets.
         
         This number is used to determine how much fiat currency will be used to purchase assets, and the cost of any buy
-        order may never exceed this sum. Reference `starting` to observe how available capitol is involved in setting up
-        buy orders. The value of `capitol` is not used when determining profit-and-loss, as unused capitol is not needed
+        order may never exceed this sum. Reference `starting` to observe how available capital is involved in setting up
+        buy orders. The value of `capital` is not used when determining profit-and-loss, as unused capital is not needed
         to be reflected in sums of order costs.
         """
         self.assets = assets
@@ -81,7 +81,7 @@ class FinancialsMixin(Strategy, ABC):
         self.order_count = order_count
         """ Hard limit on maximum number of incomplete/open orders allowed.
         
-        A hard limit is set to reduce exposure to risk but originally intended to manage available amount of capitol
+        A hard limit is set to reduce exposure to risk but originally intended to manage available amount of capital
         used per transaction (this is implemented via `starting`).
         """
 
@@ -95,10 +95,10 @@ class FinancialsMixin(Strategy, ABC):
 
     @property
     def starting(self) -> float:
-        """ Amount of capitol to use for a buying assets.
+        """ Amount of capital to use for a buying assets.
 
-        Value is computed dynamically so that trades grow larger as the amount of available capitol increases. A
-        fraction of available capitol is used instead of spending all available to protect against trading inactivity
+        Value is computed dynamically so that trades grow larger as the amount of available capital increases. A
+        fraction of available capital is used instead of spending all available to protect against trading inactivity
         during a price drop.
 
         Notes:
@@ -107,14 +107,14 @@ class FinancialsMixin(Strategy, ABC):
 
 
         Returns:
-                Amount of capitol to use when beginning to calculate final trade amount.
+                Amount of capital to use when beginning to calculate final trade amount.
         """
         if self._remaining == 0:
             msg = '`starting` accessed while buying is restricted (`_remaining` == 0)'
             warn(msg)
             logging.warning(msg)
 
-        return self.capitol / self.order_count
+        return self.capital / self.order_count
 
     def pnl(self) -> float:
         # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning
@@ -127,19 +127,19 @@ class FinancialsMixin(Strategy, ABC):
         return sell_cost - buy_cost
 
     def _adjust_capitol(self, trade: SuccessfulTrade) -> NoReturn:
-        """ Increase available capitol when assets are sold, and decrease when assets are bought.
+        """ Increase available capital when assets are sold, and decrease when assets are bought.
         """
         assert trade.side in (Side.BUY, Side.SELL)
 
         if trade.side is Side.BUY:
-            self.capitol -= trade.cost
+            self.capital -= trade.cost
 
-            if self.capitol < 0:
-                msg = "Accumulated capitol has been set to a negative value"
+            if self.capital < 0:
+                msg = "Accumulated capital has been set to a negative value"
                 warn(msg)
                 logging.warning(msg)
         else:
-            self.capitol += trade.cost
+            self.capital += trade.cost
 
     def _adjust_assets(self, trade: SuccessfulTrade) -> NoReturn:
         """ Increase available assets when bought, and decrease when sold.
@@ -203,7 +203,7 @@ class FinancialsMixin(Strategy, ABC):
         """ Handle mundane accounting functions for when a sale completes.
 
         After a sale, sold assets are dropped or deducted from `incomplete` container, and then
-        `capitol` and `assets` values are adjusted.
+        `capital` and `assets` values are adjusted.
         """
         self._clean_incomplete(trade)
         self._adjust_capitol(trade)
