@@ -196,10 +196,16 @@ class GeminiMarket(Market):
         return response.json()
 
     def update(self) -> None:
-        """ Updates `data` with recent candle data """
-        # self.data = combine_data(self.data, self.get_candles())
+        """ Updates `data` with recent candle data.
+        Notes
+            Because this function takes time. It should not be called in `__init__()`
+            and should be run asynchronously.
+        """
         try:
-            self.data = self.get_candles()
+            self.load()
+            incoming = self.get_candles()
+            combined = self._combine_candles(incoming)
+            self.data = combined
         except urllib3.HTTPSConnectionPool as e:
             logging.error(f'Connection error during `Market.update(): {e}')
             warnings.warn("Connection error")

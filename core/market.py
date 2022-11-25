@@ -93,3 +93,10 @@ class Market(ABC):
     @abstractmethod
     def get_candles(self, *args, **kwargs):
         pass
+
+    def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
+        current = self.data
+        combined = pd.concat([current, incoming])
+        combined.drop_duplicates(inplace=True)
+        combined.sort_index(inplace=True)
+        return combined
