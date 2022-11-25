@@ -7,55 +7,29 @@ from models.trades import SuccessfulTrade, Side
 from strategies.strategy import Strategy
 
 
-class FinancialsMixinTestCase(unittest.TestCase):
+class BaseFinancialsMixinTestCase(unittest.TestCase):
     @patch("analysis.financials.FinancialsMixin.__abstractmethods__", set())
     def setUp(self) -> None:
         with patch('core.market.Market') as cls:
             self.market = cls()
 
-        self.strategy = FinancialsMixin(market=self.market, threshold=.1, capital=500, assets=0)
+        self.capital = 500
+        self.threshold = .1
+        self.assets = 1
+        self.order_count = 4
+        self.strategy = FinancialsMixin(market=self.market, threshold=self.threshold,
+                                        capital=self.capital, assets=self.assets, order_count=self.order_count)
+
+
+class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
 
     def test_init(self):
         self.assertIsInstance(self.strategy, Strategy)
 
-        self.assertEqual(self.strategy.threshold, .1)
-        self.assertEqual(self.strategy.capital, 500)
-        self.assertEqual(self.strategy.assets, 0)
-        self.assertEqual(self.strategy.order_count, 4)
-
-    def test_adjust_assets(self):
-        self.strategy.assets = 5
-
-        trade = SuccessfulTrade(5, 5, Side.BUY, None)
-        self.strategy._adjust_assets(trade)
-        self.assertEqual(self.strategy.assets, 10)
-
-        trade = SuccessfulTrade(3, 5, Side.SELL, None)
-        self.strategy._adjust_assets(trade)
-        self.assertEqual(self.strategy.assets, 7)
-
-        # assert warning is raised when set to negative value
-        with self.assertWarns(Warning):
-            trade = SuccessfulTrade(8, 5, Side.SELL, None)
-            self.strategy._adjust_assets(trade)
-            self.assertEqual(self.strategy.assets, -1)
-
-    def test_adjust_capitol(self):
-        self.strategy.capital = 25
-
-        trade = SuccessfulTrade(5, 5, Side.BUY, None)
-        self.strategy._adjust_capitol(trade)
-        self.assertEqual(self.strategy.capital, 0)
-
-        trade = SuccessfulTrade(3, 10, Side.SELL, None)
-        self.strategy._adjust_capitol(trade)
-        self.assertEqual(self.strategy.capital, 30)
-
-        # assert warning is raised when set to negative value
-        with self.assertWarns(Warning):
-            trade = SuccessfulTrade(8, 5, Side.BUY, None)
-            self.strategy._adjust_capitol(trade)
-            self.assertEqual(-10, self.strategy.capital)
+        self.assertEqual(self.strategy.threshold, self.threshold)
+        self.assertEqual(self.strategy.capital, self.capital)
+        self.assertEqual(self.strategy.assets, self.assets)
+        self.assertEqual(self.strategy.order_count, self.order_count)
 
     def test_check_unpaired(self):
         """ Assert that orders with rates lower than given value are returned """
@@ -101,15 +75,16 @@ class FinancialsMixinTestCase(unittest.TestCase):
 
     def test_post_sale(self):
         self.strategy._clean_incomplete = MagicMock()
-        self.strategy._adjust_capitol = MagicMock()
+        self.strategy._adjust_capital = MagicMock()
         self.strategy._adjust_assets = MagicMock()
 
         trade = SuccessfulTrade(0, 0, Side.BUY, 0)
-        self.strategy._post_sale(trade)
+        now = pd.Timestamp.now()
+        self.strategy._post_sale(now, trade)
 
         self.strategy._clean_incomplete.assert_called_with(trade)
-        self.strategy._adjust_assets.assert_called_with(trade)
-        self.strategy._adjust_capitol.assert_called_with(trade)
+        self.strategy._adjust_assets.assert_called_with(trade, now)
+        self.strategy._adjust_capital.assert_called_with(trade, now)
 
     def test_handle_inactive(self):
         self.assertTrue(self.strategy.incomplete.empty)
@@ -163,6 +138,91 @@ class FinancialsMixinTestCase(unittest.TestCase):
         self.strategy.order_count = 10
         self.strategy.incomplete = []
         self.assertEqual(self.strategy.starting, 100)
+
+        self.strategy.incomplete = [1] * 10
+        with self.assertWarns(Warning):
+            self.assertEqual(self.strategy.starting, 100)
+
+
+class AssetsCapitalTests(BaseFinancialsMixinTestCase):
+    def test_init(self):
+        self.assertTrue(hasattr(self.strategy, '_assets'))
+        self.assertIsInstance(self.strategy._assets, pd.Series)
+
+        self.assertTrue(hasattr(self.strategy, '_capital'))
+        self.assertIsInstance(self.strategy._capital, pd.Series)
+        self.assertEqual(self.capital, self.strategy.capital)
+
+    def protected_attribute_getter_test(self, interface: str, attr: str):
+        _val = 3
+        _data = {1: 5, 2: _val}
+        setattr(self.strategy, attr, pd.Series(_data))
+        self.assertEqual(_val, getattr(self.strategy, interface))
+
+    def protected_attribute_setter_test(self, interface: str, attr: str):
+        _val = 50
+        setattr(self.strategy, interface, _val)
+        self.assertEqual(_val, getattr(self.strategy, attr).iloc[-1],
+                         f"{attr} not appended to private sequence")
+        self.assertIsInstance(getattr(self.strategy, attr).index[-1], pd.Timestamp,
+                              f"{attr} was not indexed with a `Timestamp`")
+
+        _val += 1
+        now = pd.Timestamp.now()
+        setattr(self.strategy, interface, (now, _val))
+        self.assertEqual(_val, getattr(self.strategy, attr).iloc[-1],
+                         f"{attr} not appended to private sequence")
+        self.assertEqual(now, getattr(self.strategy, attr).index[-1],
+                         f"Timestamp passed to {attr}.setter was not used as index "
+                         "or was not appended.")
+
+        # test that init value, and both sets are stored in sequence
+        self.assertEqual(3, len(getattr(self.strategy, attr)))
+
+    def test_assets_functionality(self):
+        _args = ('assets', '_assets')
+        self.protected_attribute_setter_test(*_args)
+        self.protected_attribute_getter_test(*_args)
+
+    def test_capital_functionality(self):
+        _args = ('capital', '_capital')
+        self.protected_attribute_setter_test(*_args)
+        self.protected_attribute_getter_test(*_args)
+
+    def test_adjust_assets(self):
+        self.strategy.assets = 5
+
+        trade = SuccessfulTrade(5, 5, Side.BUY, None)
+        self.strategy._adjust_assets(trade)
+        self.assertEqual(self.strategy.assets, 10)
+
+        trade = SuccessfulTrade(3, 5, Side.SELL, None)
+        self.strategy._adjust_assets(trade)
+        self.assertEqual(self.strategy.assets, 7)
+
+        # assert warning is raised when set to negative value
+        with self.assertWarns(Warning):
+            trade = SuccessfulTrade(8, 5, Side.SELL, None)
+            self.strategy._adjust_assets(trade)
+            self.assertEqual(self.strategy.assets, -1)
+
+    def test_adjust_capitol(self):
+        now = pd.Timestamp.now()
+        self.strategy.capital = (now, 25)
+
+        trade = SuccessfulTrade(5, 5, Side.BUY, None)
+        self.strategy._adjust_capital(trade)
+        self.assertEqual(self.strategy.capital, 0)
+
+        trade = SuccessfulTrade(3, 10, Side.SELL, None)
+        self.strategy._adjust_capital(trade)
+        self.assertEqual(self.strategy.capital, 30)
+
+        # assert warning is raised when set to negative value
+        with self.assertWarns(Warning):
+            trade = SuccessfulTrade(8, 5, Side.BUY, None)
+            self.strategy._adjust_capital(trade)
+            self.assertEqual(-10, self.strategy.capital)
 
 
 if __name__ == '__main__':

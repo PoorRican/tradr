@@ -9,7 +9,7 @@ from yaml import safe_dump, safe_load
 from warnings import warn
 
 from models.trades import Trade, SuccessfulTrade, add_to_df, truncate, Side
-from core.market import Market
+from core.MarketAPI import MarketAPI
 from models.data import DATA_ROOT
 
 
@@ -43,7 +43,7 @@ class Strategy(ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, market: Market, root: str = DATA_ROOT):
+    def __init__(self, market: MarketAPI, root: str = DATA_ROOT):
         """
 
         Args:
@@ -87,7 +87,7 @@ class Strategy(ABC):
         self.root = root
 
     @classmethod
-    def factory(cls, market: Market, params: List[Dict]):
+    def factory(cls, market: MarketAPI, params: List[Dict]):
         instances = []
         # TODO: markets need to by dynamically loaded
         for i in params:
@@ -113,19 +113,22 @@ class Strategy(ABC):
 
                 setattr(self, k, v)
 
-        _files = listdir(_dir)
-        _files.remove(_LITERALS_FN)
-        for _file in _files:
-            attr = _file.removesuffix(_FN_EXT)
-            assert hasattr(self, attr)
+        for k, v in self.__dict__.items():
+            _t = type(v)
+            if _t not in (pd.DataFrame, pd.Series):
+                continue
+            with open(path.join(_dir, f"{k}.yml"), 'r') as f:
+                container = safe_load(f)
+                if _t == pd.DataFrame:
+                    _seq = pd.DataFrame.from_records(container)
+                elif _t == pd.Series:
+                    _seq = pd.Series(container)
+                else:
+                    warn('non-pandas object passed through check...')
+                    continue
+                setattr(self, k, _seq)
 
             # TODO: verify data checksum
-
-            with open(path.join(_dir, _file), 'r') as f:
-                _dict = safe_load(f)
-
-                _df = pd.DataFrame.from_records(_dict)
-                setattr(self, attr, _df)
 
     def save(self):
         """ Store attributes and sequence data in instance directory
@@ -142,6 +145,7 @@ class Strategy(ABC):
 
         # aggregate attributes
         _literals = {}
+        _df_keys: List[str, ...] = []
         _sequence_keys: List[str, ...] = []
         for k, v in self.__dict__.items():
             _t = type(v)
@@ -150,6 +154,8 @@ class Strategy(ABC):
             elif _t == np.float64:              # `assets` sometimes get stored as `np.float64`
                 _literals[k] = float(v)
             elif _t == pd.DataFrame:
+                _df_keys.append(k)
+            elif _t == pd.Series:
                 _sequence_keys.append(k)
 
         # TODO: implement data checksum
@@ -165,9 +171,13 @@ class Strategy(ABC):
             safe_dump(_literals, f)
 
         # store sequence data
-        for attr in _sequence_keys:
+        for attr in _df_keys:
             with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
                 safe_dump(getattr(self, attr).to_dict(orient='records'), f)
+
+        for attr in _sequence_keys:
+            with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
+                safe_dump(getattr(self, attr).to_list(), f)
 
     def _calc_profit(self, amount: float, rate: float) -> float:
         """ Calculates profit of a sale.
@@ -180,7 +190,7 @@ class Strategy(ABC):
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
         return gain - self.market.get_fee()
 
-    def _post_sale(self, trade: SuccessfulTrade):
+    def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade):
         """ Post sale processing of trade before adding to local container. """
         pass
 
@@ -204,7 +214,7 @@ class Strategy(ABC):
 
         successful: Union[SuccessfulTrade, 'False'] = self.market.place_order(trade)
         if successful:
-            self._post_sale(successful)
+            self._post_sale(extrema, successful)
             add_to_df(self, 'orders', extrema, successful)
             return successful
 

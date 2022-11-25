@@ -75,7 +75,7 @@ class StrategyAddOrderTests(BaseStrategyTestCase):
 
             self.strategy._calc_rate.assert_called_once()
             self.strategy._calc_amount.assert_called_once()
-            self.strategy._post_sale.assert_called_once_with(trade)
+            self.strategy._post_sale.assert_called_once_with(extrema, trade)
             _mock_add_to_df.assert_called_once_with(self.strategy, 'orders', extrema, trade)
 
     def test_add_failed_order(self):
@@ -242,6 +242,7 @@ class StrategySerializationTests(BaseStrategyTestCase):
         rmtree(self.root)
 
     def test_save(self):
+        # test an arbitrary sequenced attribute
         _attr_name = 'mock_df'
         setattr(self.strategy, _attr_name, pd.DataFrame())
         # TODO: shouldn't an error be raised when adding a frame that didn't previously exist
@@ -249,7 +250,8 @@ class StrategySerializationTests(BaseStrategyTestCase):
         self.strategy.save()
 
         _dir = self.strategy._instance_dir
-        dirs = ('literals.yml', 'orders.yml', 'failed_orders.yml', f"{_attr_name}.yml")
+        dirs = ('literals.yml', 'orders.yml', 'failed_orders.yml',
+                f"{_attr_name}.yml",)
         _files = listdir(self.strategy._instance_dir)
         for i in _files:
             self.assertIn(i, dirs)
@@ -259,11 +261,14 @@ class StrategySerializationTests(BaseStrategyTestCase):
         # TODO: verify file contents
 
     def test_load_invalid(self):
+        """ Test when an attribute that isn't part of instance attributes tries to get added via
+        literal storage. """
         self.strategy.save()
 
         _fn = path.join(self.strategy._instance_dir, 'literals.yml')
         with open(_fn, 'r') as f:
             literals: dict = safe_load(f)
+
         self.assertIsInstance(literals, dict)
         literals['test'] = 'test'
         with open(_fn, 'w') as f:
@@ -273,7 +278,15 @@ class StrategySerializationTests(BaseStrategyTestCase):
             self.strategy.load()
 
     def test_load(self):
+        # test an arbitrary sequenced attribute
+        _attr_name = 'mock_series'
+        setattr(self.strategy, _attr_name, pd.Series())
+        # TODO: shouldn't an error be raised when adding a frame that didn't previously exist
+
         self.strategy.save()
+        _arbitrary_series_data = {1: 'test'}
+        with open(path.join(self.strategy._instance_dir, f"{_attr_name}.yml"), 'w') as f:
+            safe_dump(_arbitrary_series_data, f)
 
         _fn = path.join(self.strategy._instance_dir, 'literals.yml')
         with open(_fn, 'r') as f:
@@ -286,6 +299,9 @@ class StrategySerializationTests(BaseStrategyTestCase):
         self.strategy.load()
         self.assertTrue(hasattr(self.strategy, 'root'))
         self.assertEqual(getattr(self.strategy, 'root'), 'test')
+
+        # test arbitrary data
+        self.assertEqual(_arbitrary_series_data, getattr(self.strategy, _attr_name).to_dict())
 
         # TODO: test that dataframes are properly loaded
 
