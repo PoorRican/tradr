@@ -11,13 +11,8 @@ class BaseMarketTests(unittest.TestCase):
         self.market = Market()
 
 
-class GeneralMarketTests(BaseMarketTests):
-    def test_combine_candles(self):
-        self.market.data = pd.DataFrame([2, 4, 6, 8], index=[2, 4, 6, 8])
-        _df = pd.DataFrame([6, 7, 8, 9, 10], index=[6, 7, 8, 9, 10])
-
-        expected = pd.DataFrame([2, 4, 6, 7, 8, 9, 10], index=[2, 4, 6, 7, 8, 9, 10])
-        self.assertTrue(self.market._combine_candles(_df).equals(expected))
+class MarketSaveLoadTests(BaseMarketTests):
+    pass
 
 
 if __name__ == '__main__':

@@ -9,13 +9,14 @@ from models.trades import Trade, SuccessfulTrade
 class Market(ABC):
     """ Core infrastructure which abstracts communication with exchange.
 
-    Posts sell and buy orders, records historical candle data.
+    Holds minimal market data.
 
     Todo:
         - Add a layer of risk management:
             - "runaway" trade decisions or unfavorable outcomes
     """
 
+    __name__ = 'Base'
     valid_freqs: Tuple[str, ...]
     asset_pairs: Tuple[str, ...]
 
@@ -28,9 +29,9 @@ class Market(ABC):
         Notes:
             Should have `source` and `freq` set via the `DataFrame.attrs` convention.
         """
-        if symbol:
+        if symbol and hasattr(self, 'asset_pairs'):
             assert symbol in self.asset_pairs
-        if freq:
+        if freq and hasattr(self, 'valid_freqs'):
             assert freq in self.valid_freqs
 
         self.symbol = symbol
@@ -45,39 +46,16 @@ class Market(ABC):
         """ Update ticker data """
         pass
 
-    def load(self):
-        """ Load pickled data """
-        pass
+    def load(self, ignore: bool = True):
+        try:
+            self.data = pd.read_pickle(self.filename)
+        except FileNotFoundError as e:
+            if not ignore:
+                raise e
+            pass
 
     def save(self):
-        """ Save pickled data """
-        pass
-
-    @abstractmethod
-    def _convert(self, trade: Trade, response: dict) -> 'SuccessfulTrade':
-        """ Generate `SuccessfulTrade` """
-        pass
-
-    @abstractmethod
-    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
-        """ Post order to market.
-
-        Args:
-            trade:
-                Potential trade data
-
-        Returns:
-            If the market accepted trade and the order was executed, `SuccessfulTrade` is returned. This is
-            necessary because the `rate` of trade might be better than requested.
-        """
-        pass
-
-    @abstractmethod
-    def get_fee(self, *args, **kwargs) -> float:
-        """ Calculate cost of a transaction
-
-        """
-        pass
+        self.data.to_pickle(self.filename)
 
     @property
     @abstractmethod
@@ -94,13 +72,3 @@ class Market(ABC):
         """
         pass
 
-    @abstractmethod
-    def get_candles(self, *args, **kwargs):
-        pass
-
-    def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
-        current = self.data
-        combined = pd.concat([current, incoming])
-        combined.drop_duplicates(inplace=True)
-        combined.sort_index(inplace=True)
-        return combined

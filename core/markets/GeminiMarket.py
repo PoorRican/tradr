@@ -3,30 +3,22 @@ import hashlib
 import hmac
 import json
 import time
-from os import path
-from typing import Union, Optional, Dict, NoReturn, List
+from typing import Union, Optional, Dict
 import pandas as pd
 import requests
 import logging
-import urllib3
-import warnings
-from yaml import safe_dump, safe_load
 
-from models.data import json_to_df, DATA_ROOT, ROOT
-from core.market import Market
+from models.data import json_to_df, DATA_ROOT
+from core.MarketAPI import MarketAPI
 from models.trades import Trade, SuccessfulTrade
 
 
-_SECRET_FN = "gemini_api.yml"
-_INSTANCES_FN = "gemini_instances.yml"
-
-
-class GeminiMarket(Market):
+class GeminiMarket(MarketAPI):
     """ Primary interface for interacting with the Gemini market/exchange.
 
     Contains methods and attributes that retrieves candle data, fetches current orderbook, and posts trades.
 
-    Attributes:
+    Fields:
         __name__ (str):
             Platform name. Used for setting flag attributes and filenames.
 
@@ -58,61 +50,15 @@ class GeminiMarket(Market):
                       "lqtyusd lusdusd fraxusd indexusd mplusd gusdsgd metisusd qrdousd zbcusd chzusd "
                       "revvusd jamusd fidausd gmtusd orcausd gfiusd aliusd truusd gusdgbp dotusd ernusd "
                       "galusd eulusd samousd bicousd imxusd plausd iotxusd busdusd avaxusd".split(' '))
+
     BASE_URL: str = "https://api.gemini.com"
-    instances: Dict[str, 'GeminiMarket'] = {}
+    _SECRET_FN = "gemini_api.yml"
+    _INSTANCES_FN = "gemini_instances.yml"
 
-    def __init__(self, api_key: str = None, api_secret: str = None, freq: str = '15m',
-                 root: str = DATA_ROOT, update=True, symbol: str = 'btcusd'):
-        """
-        Args:
-            api_key: Gemini API key
-            api_secret: Gemini API secret
-            freq: candle frequency
-            root: root directory to store candle data
-            update: flag to disable fetching active market data. Reads any cached file by default.
-            symbol:
-                Asset pair symbol to use for trading for this instance.
-        """
-        super().__init__(symbol, freq)
-
-        if api_key and api_secret:
-            self.api_key = api_key
-            self.api_secret = api_secret.encode()
-
-        self.root = root
-
-        if update:
-            self.update()
-            self.save()
-
-        self.instances[self.id] = self
-
-    @classmethod
-    def restore(cls, fn: str = _INSTANCES_FN) -> NoReturn:
-        """ Generates several instances of `GeminiMarket` based on config file.
-
-        Paired with `snapshot()`.
-        """
-        with open(path.join(ROOT, _SECRET_FN), 'r') as f:
-            secrets = safe_load(f)
-
-        with open(path.join(ROOT, fn), 'r') as f:
-            params = safe_load(f)
-
-        for i in params:
-            instance = GeminiMarket(secrets['key'], secrets['secret'], **i, update=False)
-            instance.load()
-            cls.instances[instance.id] = instance
-
-    @classmethod
-    def snapshot(cls, fn: str = _INSTANCES_FN):
-        lines: List[Dict] = []
-        for i in cls.instances.values():
-            lines.append({'symbol': i.symbol, 'freq': i.freq})
-            i.save()
-
-        with open(path.join(ROOT, fn), 'w') as f:
-            safe_dump(lines, f)
+    def __init__(self, api_key: str = None, api_secret: str = None,
+                 freq: str = '15m', symbol: str = 'btcusd',
+                 root: str = DATA_ROOT, update=True, ):
+        super().__init__(api_key=api_key, api_secret=api_secret, freq=freq, root=root, update=update, symbol=symbol)
 
     def get_fee(self) -> float:
         """ Retrieve current transaction fee.
@@ -190,18 +136,6 @@ class GeminiMarket(Market):
         data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
         return data
 
-    @property
-    def filename(self) -> str:
-        """ Generate filename representing candle data.
-
-        Notes:
-            Each different candle interval is stored separately from other intervals from the same source.
-
-        Returns:
-            Relative filename with candle source and interval
-        """
-        return path.join(self.root, self.__name__ + '_' + self.freq + ".pkl")
-
     def get_orderbook(self) -> dict:
         """ Fetch current orderbook.
 
@@ -226,33 +160,6 @@ class GeminiMarket(Market):
         """
         response = requests.get(self.BASE_URL + f"/v1/book/{self.symbol}")
         return response.json()
-
-    def update(self) -> None:
-        """ Updates `data` with recent candle data.
-        Notes
-            Because this function takes time. It should not be called in `__init__()`
-            and should be run asynchronously.
-        """
-        try:
-            self.load()
-            incoming = self.get_candles()
-            combined = self._combine_candles(incoming)
-            self.data = combined
-        except urllib3.HTTPSConnectionPool as e:
-            logging.error(f'Connection error during `Market.update(): {e}')
-            warnings.warn("Connection error")
-            self.load(ignore=False)
-
-    def load(self, ignore: bool = True):
-        try:
-            self.data = pd.read_pickle(self.filename)
-        except FileNotFoundError as e:
-            if not ignore:
-                raise e
-            pass
-
-    def save(self):
-        self.data.to_pickle(self.filename)
 
     def post(self, endpoint: str, data: dict = None) -> dict:
         """ Access private API endpoints.
