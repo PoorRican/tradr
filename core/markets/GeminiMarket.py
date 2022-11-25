@@ -21,7 +21,7 @@ class GeminiMarket(Market):
 
     Contains methods and attributes that retrieves candle data, fetches current orderbook, and posts trades.
 
-    Class-level Attributes:
+    Attributes:
         name (str):
             Platform name. Used for setting flag attributes and filenames.
 
@@ -29,16 +29,34 @@ class GeminiMarket(Market):
             iterable with valid frequency/interval values. This will be changed into an `enum` in the near
             future.
 
+        asset_pairs (tuple[str, ...]):
+            List of valid asset pairs. This list is pulled from documentation.
+            https://docs.gemini.com/rest-api/#symbols-and-minimums
+
         BASE_URL (str):
             Base URL for accessing all API endpoints. This should be set to `'api.sandbox.gemini.com'`
             during testing or simulation.
     """
     name: str = 'Gemini'
     valid_freqs: tuple[str, ...] = ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day')
+    # noinspection SpellCheckingInspection
+    asset_pairs = set("btcusd ethbtc ethusd zecusd zecbtc zeceth zecbch zecltc bchusd bchbtc bcheth "
+                      "ltcusd ltcbtc ltceth ltcbch batusd daiusd linkusd oxtusd batbtc linkbtc oxtbtc "
+                      "bateth linketh oxteth ampusd compusd paxgusd mkrusd zrxusd kncusd manausd storjusd "
+                      "snxusd crvusd balusd uniusd renusd umausd yfiusd btcdai ethdai aaveusd filusd btceur "
+                      "btcgbp etheur ethgbp btcsgd ethsgd sklusd grtusd bntusd 1inchusd enjusd lrcusd sandusd "
+                      "cubeusd lptusd bondusd maticusd injusd sushiusd dogeusd alcxusd mirusd ftmusd ankrusd "
+                      "btcgusd ethgusd ctxusd xtzusd axsusd slpusd lunausd ustusd mco2usd efilfil gusdusd "
+                      "dogebtc dogeeth wcfgusd rareusd radusd qntusd nmrusd maskusd fetusd ashusd audiousd "
+                      "api3usd usdcusd shibusd rndrusd mcusd galausd ensusd kp3rusd cvcusd elonusd mimusd "
+                      "spellusd tokeusd ldousd rlyusd solusd rayusd sbrusd apeusd rbnusd fxsusd dpiusd "
+                      "lqtyusd lusdusd fraxusd indexusd mplusd gusdsgd metisusd qrdousd zbcusd chzusd "
+                      "revvusd jamusd fidausd gmtusd orcausd gfiusd aliusd truusd gusdgbp dotusd ernusd "
+                      "galusd eulusd samousd bicousd imxusd plausd iotxusd busdusd avaxusd".split(' '))
     BASE_URL: str = "https://api.gemini.com"
 
     def __init__(self, api_key: str = None, api_secret: str = None, time_frame: str = '15m',
-                 root: str = DATA_ROOT, update=True):
+                 root: str = DATA_ROOT, update=True, symbol: str = 'btcusd'):
         """
         Args:
             api_key: Gemini API key
@@ -46,9 +64,13 @@ class GeminiMarket(Market):
             time_frame: candle frequency
             root: root directory to store candle data
             update: flag to disable fetching active market data. Reads any cached file by default.
+            symbol:
+                Asset pair symbol to use for trading for this instance.
         """
         super().__init__()
+
         assert time_frame in self.valid_freqs
+        assert symbol in self.asset_pairs
 
         if api_key and api_secret:
             self.api_key = api_key
@@ -56,6 +78,7 @@ class GeminiMarket(Market):
 
         self.freq = time_frame
         self.root = root
+        self.symbol = symbol
 
         if update:
             self.update()
@@ -87,7 +110,7 @@ class GeminiMarket(Market):
             Fee as returned by API. By default, `0.35` is returned.
 
         """
-        endpoint = '/v1/notionalvolume'
+        endpoint = '/v1/notionalvolume'     # noqa
         response = self.post(endpoint)
         try:
             return response['api_taker_fee_bps'] / 100
@@ -126,11 +149,11 @@ class GeminiMarket(Market):
             freq = self.freq
         assert freq in self.valid_freqs
 
-        response = requests.get(self.BASE_URL + "/v2/candles/btcusd/" + freq)
+        response = requests.get(self.BASE_URL + f"/v2/candles/{self.symbol}/{freq}")
         btc_candle_data = response.json()
         data = json_to_df(btc_candle_data)
 
-        # the Gemini API sends data in a reverse direction for some reason (lower index are later times)
+        # reverse so data is ascending (oldest to most recent)
         # TODO: check that GeminiAPI has correct order of data in unittests
         data = data.iloc[::-1]
         assert data.iloc[0].name < data.iloc[-1].name
@@ -152,8 +175,7 @@ class GeminiMarket(Market):
         """
         return path.join(self.root, self.name + '_' + self.freq + ".pkl")
 
-    @staticmethod
-    def get_orderbook() -> dict:
+    def get_orderbook(self) -> dict:
         """ Fetch current orderbook.
 
         Orderbook is stored as 2 arrays containing mappings for each price.
@@ -175,7 +197,7 @@ class GeminiMarket(Market):
                 level represents offers at that price. Each price level contains another mapping for [price, amount].
                 See
         """
-        response = requests.get(GeminiMarket.BASE_URL + "/v1/book/btcusd")
+        response = requests.get(self.BASE_URL + f"/v1/book/{self.symbol}")
         return response.json()
 
     def update(self) -> None:
@@ -277,7 +299,7 @@ class GeminiMarket(Market):
                 the original data in a separate container (ie: `failed_orders`)
         """
         data = {
-            'symbol': "btcusd",
+            'symbol': self.symbol,
             'amount': trade.amt,
             'price': trade.rate,
             'side': trade.side,
