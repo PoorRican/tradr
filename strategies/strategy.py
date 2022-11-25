@@ -2,7 +2,7 @@ import pandas as pd
 from os import path, listdir, mkdir
 from datetime import datetime
 import numpy as np
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Dict
 from abc import ABC, abstractmethod
 import logging
 from yaml import safe_dump, safe_load
@@ -85,6 +85,13 @@ class Strategy(ABC):
         """
 
         self.root = root
+
+    @classmethod
+    def factory(cls, market: Market, params: List[Dict]):
+        instances = []
+        # TODO: markets need to by dynamically loaded
+        for i in params:
+            instances.append(cls(market=market))
 
     def load(self):
         """ Load stored attributes and sequence data from instance directory onto memory.

@@ -36,6 +36,10 @@ class Market(ABC):
         self.symbol = symbol
         self.freq = freq
 
+    @property
+    def id(self) -> str:
+        return f"{self.__name__}_{self.symbol}_{self.freq}"
+
     @abstractmethod
     def update(self):
         """ Update ticker data """

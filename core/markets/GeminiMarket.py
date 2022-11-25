@@ -4,16 +4,21 @@ import hmac
 import json
 import time
 from os import path
-from typing import Union, Optional
+from typing import Union, Optional, Dict, NoReturn, List
 import pandas as pd
 import requests
 import logging
 import urllib3
 import warnings
+from yaml import safe_dump, safe_load
 
-from models.data import json_to_df, DATA_ROOT
+from models.data import json_to_df, DATA_ROOT, ROOT
 from core.market import Market
 from models.trades import Trade, SuccessfulTrade
+
+
+_SECRET_FN = "gemini_api.yml"
+_INSTANCES_FN = "gemini_instances.yml"
 
 
 class GeminiMarket(Market):
@@ -54,6 +59,7 @@ class GeminiMarket(Market):
                       "revvusd jamusd fidausd gmtusd orcausd gfiusd aliusd truusd gusdgbp dotusd ernusd "
                       "galusd eulusd samousd bicousd imxusd plausd iotxusd busdusd avaxusd".split(' '))
     BASE_URL: str = "https://api.gemini.com"
+    instances: Dict[str, 'GeminiMarket'] = {}
 
     def __init__(self, api_key: str = None, api_secret: str = None, freq: str = '15m',
                  root: str = DATA_ROOT, update=True, symbol: str = 'btcusd'):
@@ -78,6 +84,35 @@ class GeminiMarket(Market):
         if update:
             self.update()
             self.save()
+
+        self.instances[self.id] = self
+
+    @classmethod
+    def restore(cls, fn: str = _INSTANCES_FN) -> NoReturn:
+        """ Generates several instances of `GeminiMarket` based on config file.
+
+        Paired with `snapshot()`.
+        """
+        with open(path.join(ROOT, _SECRET_FN), 'r') as f:
+            secrets = safe_load(f)
+
+        with open(path.join(ROOT, fn), 'r') as f:
+            params = safe_load(f)
+
+        for i in params:
+            instance = GeminiMarket(secrets['key'], secrets['secret'], **i, update=False)
+            instance.load()
+            cls.instances[instance.id] = instance
+
+    @classmethod
+    def snapshot(cls, fn: str = _INSTANCES_FN):
+        lines: List[Dict] = []
+        for i in cls.instances.values():
+            lines.append({'symbol': i.symbol, 'freq': i.freq})
+            i.save()
+
+        with open(path.join(ROOT, fn), 'w') as f:
+            safe_dump(lines, f)
 
     def get_fee(self) -> float:
         """ Retrieve current transaction fee.
