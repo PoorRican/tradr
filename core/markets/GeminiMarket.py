@@ -3,26 +3,23 @@ import hashlib
 import hmac
 import json
 import time
-from os import path
-from typing import Union, Optional
+from typing import Union, Optional, Dict
 import pandas as pd
 import requests
 import logging
-import urllib3
-import warnings
 
 from models.data import json_to_df, DATA_ROOT
-from core.market import Market
+from core.MarketAPI import MarketAPI
 from models.trades import Trade, SuccessfulTrade
 
 
-class GeminiMarket(Market):
+class GeminiMarket(MarketAPI):
     """ Primary interface for interacting with the Gemini market/exchange.
 
     Contains methods and attributes that retrieves candle data, fetches current orderbook, and posts trades.
 
-    Attributes:
-        name (str):
+    Fields:
+        __name__ (str):
             Platform name. Used for setting flag attributes and filenames.
 
         valid_freqs (tuple[str, ...]):
@@ -37,7 +34,7 @@ class GeminiMarket(Market):
             Base URL for accessing all API endpoints. This should be set to `'api.sandbox.gemini.com'`
             during testing or simulation.
     """
-    name: str = 'Gemini'
+    __name__: str = 'Gemini'
     valid_freqs: tuple[str, ...] = ('1m', '5m', '15m', '30m', '1hr', '6hr', '1day')
     # noinspection SpellCheckingInspection
     asset_pairs = set("btcusd ethbtc ethusd zecusd zecbtc zeceth zecbch zecltc bchusd bchbtc bcheth "
@@ -53,39 +50,15 @@ class GeminiMarket(Market):
                       "lqtyusd lusdusd fraxusd indexusd mplusd gusdsgd metisusd qrdousd zbcusd chzusd "
                       "revvusd jamusd fidausd gmtusd orcausd gfiusd aliusd truusd gusdgbp dotusd ernusd "
                       "galusd eulusd samousd bicousd imxusd plausd iotxusd busdusd avaxusd".split(' '))
+
     BASE_URL: str = "https://api.gemini.com"
+    _SECRET_FN = "gemini_api.yml"
+    _INSTANCES_FN = "gemini_instances.yml"
 
-    def __init__(self, api_key: str = None, api_secret: str = None, time_frame: str = '15m',
-                 root: str = DATA_ROOT, update=True, symbol: str = 'btcusd'):
-        """
-        Args:
-            api_key: Gemini API key
-            api_secret: Gemini API secret
-            time_frame: candle frequency
-            root: root directory to store candle data
-            update: flag to disable fetching active market data. Reads any cached file by default.
-            symbol:
-                Asset pair symbol to use for trading for this instance.
-        """
-        super().__init__()
-
-        assert time_frame in self.valid_freqs
-        assert symbol in self.asset_pairs
-
-        if api_key and api_secret:
-            self.api_key = api_key
-            self.api_secret = api_secret.encode()
-
-        self.freq = time_frame
-        self.root = root
-        self.symbol = symbol
-
-        if update:
-            self.update()
-            self.save()
-        else:
-            self.load()
-        # TODO: raise an error if there is no cache
+    def __init__(self, api_key: str = None, api_secret: str = None,
+                 freq: str = '15m', symbol: str = 'btcusd',
+                 root: str = DATA_ROOT, update=True, ):
+        super().__init__(api_key=api_key, api_secret=api_secret, freq=freq, root=root, update=update, symbol=symbol)
 
     def get_fee(self) -> float:
         """ Retrieve current transaction fee.
@@ -163,18 +136,6 @@ class GeminiMarket(Market):
         data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
         return data
 
-    @property
-    def filename(self) -> str:
-        """ Generate filename representing candle data.
-
-        Notes:
-            Each different candle interval is stored separately from other intervals from the same source.
-
-        Returns:
-            Relative filename with candle source and interval
-        """
-        return path.join(self.root, self.name + '_' + self.freq + ".pkl")
-
     def get_orderbook(self) -> dict:
         """ Fetch current orderbook.
 
@@ -199,27 +160,6 @@ class GeminiMarket(Market):
         """
         response = requests.get(self.BASE_URL + f"/v1/book/{self.symbol}")
         return response.json()
-
-    def update(self) -> None:
-        """ Updates `data` with recent candle data """
-        # self.data = combine_data(self.data, self.get_candles())
-        try:
-            self.data = self.get_candles()
-        except urllib3.HTTPSConnectionPool as e:
-            logging.error(f'Connection error during `Market.update(): {e}')
-            warnings.warn("Connection error")
-            self.load(ignore=False)
-
-    def load(self, ignore: bool = True):
-        try:
-            self.data = pd.read_pickle(self.filename)
-        except FileNotFoundError as e:
-            if not ignore:
-                raise e
-            pass
-
-    def save(self):
-        self.data.to_pickle(self.filename)
 
     def post(self, endpoint: str, data: dict = None) -> dict:
         """ Access private API endpoints.

@@ -26,8 +26,8 @@ class CalcAmountTestCases(unittest.TestCase):
         self.skipTest('')
 
     def test_buy_exceeds_capitol(self):
-        """ assert amount returned does not exceed amount of capitol """
-        # assert warning is raised when calculated amount exceeds capitol
+        """ assert amount returned does not exceed amount of capital """
+        # assert warning is raised when calculated amount exceeds capital
         self.skipTest('')
 
 
