@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from math import fabs, ceil
-from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple
+from math import fabs, ceil, isnan
+from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple, Union
 import pandas as pd
 from talib import BBANDS, STOCHRSI, MACD
 
@@ -46,16 +46,21 @@ class Indicator(ABC):
 
     def __init__(self, index: pd.Index = None):
         self.graph = self.container(index)
+        self.computed = self.container(index, columns=('decision', 'strength'))
 
     @classmethod
-    def container(cls, index: pd.Index = None, data: Tuple = None) -> pd.DataFrame:
+    def container(cls, index: pd.Index = None, data: Tuple = None, columns: Sequence[str] = None) -> pd.DataFrame:
         if data:
             _data = [i.values.T for i in data]
             _dict = {}
             for name, _col in zip(cls.columns, _data):
                 _dict[name] = _col
             return pd.DataFrame(_dict, index=index, dtype=float)
-        return pd.DataFrame(index=index, columns=list(cls.columns), dtype=float)
+
+        if columns is None:
+            columns = cls.columns
+
+        return pd.DataFrame(index=index, columns=list(columns), dtype=float)
 
     def process(self, data: pd.DataFrame, **kwargs) -> NoReturn:
         """
@@ -92,13 +97,35 @@ class Indicator(ABC):
         # self.graph = pd.concat([self.graph, buffer.loc[updates.values]])
         self.graph = buffer
 
-    @abstractmethod
-    def check(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
-        pass
+    def calculate_all(self, candles: pd.DataFrame) -> NoReturn:
+        assert len(self.graph)
+
+        self.computed['decision'] = self.graph.apply(self._row_decision, axis='columns', candles=candles)
+        self.computed['strength'] = self.graph.apply(self._row_strength, axis='columns', candles=candles)
 
     @abstractmethod
-    def strength(self, point: pd.Timestamp, candles: pd.DataFrame, *args, **kwargs) -> float:
-        """ Determine strength of Trend """
+    def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> Signal:
+        pass
+
+    def check(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
+        assert len(self.graph)
+        row = self.graph.loc[point]
+
+        return self._row_decision(row, candles)
+
+    def strength(self, point: pd.Timestamp, candles: pd.DataFrame) -> float:
+        """ Determine strength of Trend for a given point"""
+        assert len(self.graph)
+
+        if point:
+            row = self.graph.loc[point]
+        else:
+            row = self.graph.iloc[-1]
+
+        return self._row_strength(row, candles)
+
+    @abstractmethod
+    def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
         pass
 
 
@@ -109,11 +136,9 @@ class MACDRow(Indicator):
 
     columns = ('macd', 'macdsignal', 'macdhist')
 
-    def check(self, point: pd.Timestamp, *args, **kwargs) -> Signal:
-        frame = self.graph.loc[point]
-
-        signal = frame['macdsignal']
-        macd = frame['macd']
+    def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
+        signal = row['macdsignal']
+        macd = row['macd']
 
         if hasattr(signal, '__iter__'):
             signal = signal[0]
@@ -127,24 +152,19 @@ class MACDRow(Indicator):
         else:
             return Signal.HOLD
 
-    def strength(self, point: pd.Timestamp, *args, **kwargs) -> float:
-        """ Determine strength of Trend """
+    def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], *args, **kwargs) -> float:
         assert len(self.graph)
 
-        if point:
-            frame = self.graph.loc[point]
-        else:
-            frame = self.graph.iloc[-1]
-
-        signal = frame['macdsignal']
-        macd = frame['macd']
+        signal = row['macdsignal']
+        macd = row['macd']
 
         val = fabs((signal + macd) / 2)
         val /= 400
+        if isnan(val):
+            return 0
         return ceil(val)
 
 
-# noinspection PyUnusedLocal
 class BBANDSRow(Indicator):
     _function = BBANDS
     _parameters = {'timeperiod': 20}
@@ -155,23 +175,33 @@ class BBANDSRow(Indicator):
         super().__init__(*args, **kwargs)
         self.threshold = threshold
 
-    def check(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
-        rate = float(candles.loc[point, self._source])
-        frame = self.graph.loc[point]
-
-        buy = frame['middleband'] - frame['lowerband']
-        sell = frame['upperband'] - frame['middleband']
+    def _calculate_thresholds(self, row: Union['pd.Series', 'pd.DataFrame']) -> Tuple[float, float]:
+        buy = row['middleband'] - row['lowerband']
+        sell = row['upperband'] - row['middleband']
 
         buy *= self.threshold
         sell *= self.threshold
 
-        buy += frame['lowerband']
-        sell += frame['middleband']
+        buy += row['lowerband']
+        sell += row['middleband']
 
-        if hasattr(buy, '__iter__'):
-            buy = buy[0]
-        if hasattr(sell, '__iter__'):
-            sell = sell[0]
+        buy = float(buy)
+        sell = float(sell)
+
+        return buy, sell
+
+    def _extract_rate(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
+        if not hasattr(row, 'name'):
+            point = row.index[0]
+        else:
+            point = row.name
+        return float(candles.loc[point, self._source])
+
+    def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
+        # hack to unpack `point` from row
+        rate = self._extract_rate(row, candles)
+
+        buy, sell = self._calculate_thresholds(row)
 
         if rate <= buy:
             return Signal.BUY
@@ -180,32 +210,18 @@ class BBANDSRow(Indicator):
         else:
             return Signal.HOLD
 
-    def strength(self, point: pd.Timestamp, candles: pd.DataFrame, *args, **kwargs) -> float:
+    def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> float:
         """ Determine strength of Trend """
         assert len(self.graph)
 
-        if point:
-            frame = self.graph.loc[point]
-            # candles doesnt exist
-            rate = float(candles.loc[point, self._source])
-        else:
-            frame = self.graph.iloc[-1]
-            rate = float(candles.iloc[-1][self._source])
+        rate = self._extract_rate(row, candles)
 
-        buy = frame['middleband'] - frame['lowerband']
-        sell = frame['upperband'] - frame['middleband']
+        buy, sell = self._calculate_thresholds(row)
 
-        buy *= self.threshold
-        sell *= self.threshold
-
-        buy += frame['lowerband']
-        sell += frame['middleband']
-
-        buy = float(buy)
-        sell = float(sell)
-
-        if rate <= buy:
-            lower = frame['lowerband']
+        if isnan(buy) or isnan(sell):
+            return 0
+        elif rate <= buy:
+            lower = row['lowerband']
             diff = buy - lower
             if rate > lower:
                 return 1
@@ -213,7 +229,7 @@ class BBANDSRow(Indicator):
                 return 2
             return 3
         elif rate >= sell:
-            upper = frame['upperband']
+            upper = row['upperband']
             diff = upper - sell
             if rate < upper:
                 return 1
@@ -237,9 +253,13 @@ class STOCHRSIRow(Indicator):
         self.oversold = oversold
 
     def check(self, point: pd.Timestamp, *args, **kwargs) -> Signal:
-        frame = self.graph.loc[point]
-        fastk = frame['fastk']
-        fastd = frame['fastd']
+        row = self.graph.loc[point]
+
+        return self._row_decision(row)
+
+    def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
+        fastk = row['fastk']
+        fastd = row['fastd']
 
         if hasattr(fastk, '__iter__'):
             fastk = fastk[0]
@@ -253,20 +273,14 @@ class STOCHRSIRow(Indicator):
         else:
             return Signal.HOLD
 
-    def strength(self, point: pd.Timestamp, *args, **kwargs) -> float:
-        """ Determine strength of Trend """
-        assert len(self.graph)
-
-        if point:
-            frame = self.graph.loc[point]
-        else:
-            frame = self.graph.iloc[-1]
-
-        k = frame['fastk']
-        d = frame['fastd']
+    def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
+        k = row['fastk']
+        d = row['fastd']
 
         val = fabs(k - d)
 
+        if isnan(val):
+            return 0
         return ceil(val / 7)
 
 
@@ -341,3 +355,7 @@ class IndicatorContainer(object):
     def strength(self, data: pd.DataFrame, point: pd.Timestamp = None):
         strengths = pd.Series([indicator.strength(point, data) for indicator in self.indicators])
         return strengths.mean()
+
+    def calculate_all(self, candles: pd.DataFrame):
+        for indicator in self.indicators:
+            indicator.calculate_all(candles)
