@@ -126,11 +126,12 @@ class MarketAPI(Market, ABC):
         """
         try:
             self.load()
-            incoming = self.get_candles()
-            combined = self._combine_candles(incoming)
-            self.data = combined
+            data = self.get_candles()
+            data = self._combine_candles(data)
+            data = self._repair_candles(data)
+            self.data = data
         except urllib3.HTTPSConnectionPool as e:
-            logging.error(f'Connection error during `Market.update(): {e}')
+            logging.error(f'Connection error during `MarketAPI.update(): {e}')
             warnings.warn("Connection error")
             self.load(ignore=False)
 
@@ -165,8 +166,25 @@ class MarketAPI(Market, ABC):
         pass
 
     def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
-        current = self.data
-        combined = pd.concat([current, incoming])
+        combined = pd.concat([self.data, incoming])
         combined.drop_duplicates(inplace=True)
-        combined.sort_index(inplace=True)
+        combined.attrs = incoming.attrs
         return combined
+
+    def _repair_candles(self, data: pd.DataFrame) -> pd.DataFrame:
+        """ Fill in missing values for candle data via interpolation. """
+        start = data.iloc[0].name
+        end = data.iloc[-1].name
+        attrs = data.attrs
+        freq = attrs['freq']
+
+        _freq = self.translate_period(freq)
+        index = pd.date_range(start=start, end=end, freq=_freq, tz=data.index.tz)
+
+        buffer = pd.DataFrame(index=index, columns=list(self.columns), dtype=float)
+
+        buffer.update(data)
+        buffer.attrs = attrs
+        buffer.interpolate(inplace=True)
+
+        return buffer

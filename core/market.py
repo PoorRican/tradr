@@ -19,9 +19,10 @@ class Market(ABC):
     __name__ = 'Base'
     valid_freqs: Tuple[str, ...]
     asset_pairs: Tuple[str, ...]
+    columns = ('open', 'high', 'low', 'close', 'volume')
 
     def __init__(self, symbol: str = None, freq: str = None):
-        self.data = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+        self.data = pd.DataFrame(columns=list(self.columns))
         """DataFrame: container for candle data.
         
         Container gets populated by `get_candles` and should otherwise be read-only.
