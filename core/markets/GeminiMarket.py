@@ -134,6 +134,9 @@ class GeminiMarket(MarketAPI):
         # set flag/metadata on `DataFrame`
         data.attrs['freq'] = freq
         data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
+
+        data = self._repair_candles(data)
+
         return data
 
     def get_orderbook(self) -> dict:

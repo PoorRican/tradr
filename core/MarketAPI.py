@@ -128,7 +128,6 @@ class MarketAPI(Market, ABC):
             self.load()
             data = self.get_candles()
             data = self._combine_candles(data)
-            data = self._repair_candles(data)
             self.data = data
         except urllib3.HTTPSConnectionPool as e:
             logging.error(f'Connection error during `MarketAPI.update(): {e}')
