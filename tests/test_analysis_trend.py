@@ -8,9 +8,10 @@ from analysis.trend import TrendMovement, TrendDetector, MarketTrend
 FREQUENCIES = ('freq1', 'freq2')
 
 
+@patch('models.signals.Indicator.__abstractmethods__', set())
 class TrendDetectorTests(unittest.TestCase):
     def setUp(self) -> None:
-        with patch('core.markets.GeminiMarket') as cls:
+        with patch('core.markets.GeminiMarket.GeminiMarket') as cls:
             self.market = cls()
 
         TrendDetector._frequencies = FREQUENCIES

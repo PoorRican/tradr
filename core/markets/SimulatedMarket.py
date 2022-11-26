@@ -1,6 +1,7 @@
 from typing import Union
 
 from core.market import Market
+from core.MarketAPI import MarketAPI
 from models.trades import Trade, SuccessfulTrade
 
 
@@ -12,13 +13,16 @@ class SimulatedMarket(Market):
         - Only accept trade 50% of the time. This adds realism to simulation.
     """
 
-    def __init__(self, model: Market = None, update: bool = False):
+    def __init__(self, model: MarketAPI = None, update: bool = False):
         super().__init__()
 
         if model:
             self.model = model
             if update:
                 self.update()
+            else:
+                self.model.load()
+                self.data = self.model.data
         self.orders = 0
 
     @property

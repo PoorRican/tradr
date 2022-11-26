@@ -5,12 +5,12 @@ from pytz import timezone
 from typing import Union, Tuple, Sequence
 
 from analysis.financials import FinancialsMixin
-from models.signals import Signal, IndicatorContainer, INDICATOR
+from models.signals import Signal, IndicatorContainer, Indicator
 from models.trades import Side
 
 
 class OscillatingStrategy(FinancialsMixin, ABC):
-    def __init__(self, indicators: Sequence[INDICATOR], timeout: str = '6h', **kwargs):
+    def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h', **kwargs):
         super().__init__(**kwargs)
 
         self.timeout: str = timeout

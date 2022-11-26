@@ -3,7 +3,7 @@ import pandas as pd
 from pytz import timezone
 from typing import Mapping, Optional, NoReturn, Sequence
 
-from core.market import Market
+from core.MarketAPI import MarketAPI
 from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow, Signal
 from models.trend import TrendMovement, MarketTrend
 
@@ -32,7 +32,7 @@ class TrendDetector(object):
     Shall be ordered from shortest-to-longest.
     """
 
-    def __init__(self, market: Market):
+    def __init__(self, market: MarketAPI):
         super().__init__()
 
         self.market = market
@@ -105,10 +105,42 @@ class TrendDetector(object):
         return combined
 
     def _fetch_trends(self, point: pd.Timestamp = None) -> Mapping[str, 'TrendMovement']:
+        """
+
+        Args:
+            point:
+
+        Notes:
+            Frequency needs to be modified before accessing indicator graphs. A pandas unit of frequency to select
+            indicator data from greater time frequencies needs to be passed as `point`. Used by
+            `TrendDetector` to prevent `KeyError` from being raised during simulation arising from larger timeframes
+            of stored candle data (ie: 1day, 6hr, or 1hr)  and smaller timeframes used by strategy/backtesting
+            functions (ie: 15min). If passed, `point` is rounded down to the largest frequency less than `point`
+            (eg: 14:45 becomes 14:00). If not passed, `point` is untouched.
+
+        Returns:
+
+        """
         trends: Mapping['str': 'TrendMovement'] = {}
         for freq in self._frequencies:
+            # modify `point` to access correct timeframe
             _freq = self.market.translate_period(freq)      # `DateOffset` conversion
-            result: Signal = self._indicators[freq].check(self.candles(freq), point, freq=_freq)
+            if _freq == '6H':
+                point = point.floor(_freq)
+                if point.dst():
+                    point -= pd.DateOffset(hours=3)
+                else:
+                    point -= pd.DateOffset(hours=4)
+                point = point.floor('H', nonexistent='shift_backward')
+            elif _freq == '1D':
+                # TODO: faulty implementation
+                # Incorrect date is indexed immediately after daily candle data is released.
+                point = point.floor(_freq) - pd.DateOffset(days=1)
+                point = point.strftime('%m/%d/%Y')          # generically select data
+            else:
+                point = point.floor(_freq, nonexistent='shift_backward')
+
+            result: Signal = self._indicators[freq].check(self.candles(freq), point)
             trends[freq] = TrendMovement(result)
         return trends
 
