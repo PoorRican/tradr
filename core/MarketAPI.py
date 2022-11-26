@@ -178,6 +178,10 @@ class MarketAPI(Market, ABC):
         attrs = data.attrs
         freq = attrs['freq']
 
+        # drop invalid rows
+        # data.drop(data.loc[data['volume'] == 0], inplace=True)        # drop rows w/ 0 volume
+        data.drop_duplicates(keep="first", inplace=True)
+
         _freq = self.translate_period(freq)
         index = pd.date_range(start=start, end=end, freq=_freq, tz=data.index.tz)
 
