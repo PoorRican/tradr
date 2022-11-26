@@ -104,6 +104,25 @@ class TrendDetector(object):
 
         return combined
 
+    def _process_point(self, point: pd.Timestamp, freq: str) -> pd.Timestamp:
+        # modify `point` to access correct timeframe
+        _freq = self.market.translate_period(freq)      # `DateOffset` conversion
+        if _freq == '6H':
+            point = point.floor(_freq)
+            if point.dst():
+                point -= pd.DateOffset(hours=3)
+            else:
+                point -= pd.DateOffset(hours=4)
+            point = point.floor('H', nonexistent='shift_backward')
+        elif _freq == '1D':
+            # TODO: faulty implementation
+            # Incorrect date is indexed immediately after daily candle data is released.
+            point = point.floor(_freq) - pd.DateOffset(days=1)
+            point = point.strftime('%m/%d/%Y')          # generically select data
+        else:
+            point = point.floor(_freq, nonexistent='shift_backward')
+        return point
+
     def _fetch_trends(self, point: pd.Timestamp = None) -> Mapping[str, 'TrendMovement']:
         """
 
@@ -123,22 +142,7 @@ class TrendDetector(object):
         """
         trends: Mapping['str': 'TrendMovement'] = {}
         for freq in self._frequencies:
-            # modify `point` to access correct timeframe
-            _freq = self.market.translate_period(freq)      # `DateOffset` conversion
-            if _freq == '6H':
-                point = point.floor(_freq)
-                if point.dst():
-                    point -= pd.DateOffset(hours=3)
-                else:
-                    point -= pd.DateOffset(hours=4)
-                point = point.floor('H', nonexistent='shift_backward')
-            elif _freq == '1D':
-                # TODO: faulty implementation
-                # Incorrect date is indexed immediately after daily candle data is released.
-                point = point.floor(_freq) - pd.DateOffset(days=1)
-                point = point.strftime('%m/%d/%Y')          # generically select data
-            else:
-                point = point.floor(_freq, nonexistent='shift_backward')
+            point = self._process_point(point, freq)
 
             result: Signal = self._indicators[freq].check(self.candles(freq), point)
             trends[freq] = TrendMovement(result)
@@ -149,9 +153,13 @@ class TrendDetector(object):
         self._candles = self._fetch()
 
     def _determine_scalar(self, point: Optional[pd.Timestamp] = None) -> int:
-        results = pd.Series([container.strength(point) for container in self._indicators.values()])
+        results = []
+        for freq, container in self._indicators.items():
+            _point = self._process_point(point, freq)
+            results.append(container.strength(self.candles(freq), _point))
         # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
         # TODO: only incorporate `strength()` from outputs from consensus
+        results = pd.Series(results)
         return int(floor(results.mean())) or 1
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
@@ -181,7 +189,7 @@ class TrendDetector(object):
         results = self._fetch_trends(point)
         consensus = self._determine_consensus(list(results.values()))
 
-        return MarketTrend(consensus, scalar=self._determine_scalar())
+        return MarketTrend(consensus, scalar=self._determine_scalar(point))
 
     @staticmethod
     def _determine_consensus(values: Sequence['TrendMovement']) -> TrendMovement:

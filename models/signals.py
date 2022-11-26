@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from enum import IntEnum
+from math import fabs, ceil
 from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple
 import pandas as pd
-from collections import UserList
 from talib import BBANDS, STOCHRSI, MACD
 
 
@@ -96,16 +96,10 @@ class Indicator(ABC):
     def check(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
         pass
 
-    # @abstractmethod
-    def strength(self, point: pd.Timestamp, *args, **kwargs) -> float:
+    @abstractmethod
+    def strength(self, point: pd.Timestamp, candles: pd.DataFrame, *args, **kwargs) -> float:
         """ Determine strength of Trend """
-        assert len(self.graph)
-
-        # if point:
-        #     frame = self.graph.loc[point]
-        # else:
-        #     frame = self.graph.iloc[-1]
-        return 1
+        pass
 
 
 class MACDRow(Indicator):
@@ -132,6 +126,22 @@ class MACDRow(Indicator):
             return Signal.SELL
         else:
             return Signal.HOLD
+
+    def strength(self, point: pd.Timestamp, *args, **kwargs) -> float:
+        """ Determine strength of Trend """
+        assert len(self.graph)
+
+        if point:
+            frame = self.graph.loc[point]
+        else:
+            frame = self.graph.iloc[-1]
+
+        signal = frame['macdsignal']
+        macd = frame['macd']
+
+        val = fabs((signal + macd) / 2)
+        val /= 400
+        return ceil(val)
 
 
 # noinspection PyUnusedLocal
@@ -170,6 +180,48 @@ class BBANDSRow(Indicator):
         else:
             return Signal.HOLD
 
+    def strength(self, point: pd.Timestamp, candles: pd.DataFrame, *args, **kwargs) -> float:
+        """ Determine strength of Trend """
+        assert len(self.graph)
+
+        if point:
+            frame = self.graph.loc[point]
+            # candles doesnt exist
+            rate = float(candles.loc[point, self._source])
+        else:
+            frame = self.graph.iloc[-1]
+            rate = float(candles.iloc[-1][self._source])
+
+        buy = frame['middleband'] - frame['lowerband']
+        sell = frame['upperband'] - frame['middleband']
+
+        buy *= self.threshold
+        sell *= self.threshold
+
+        buy += frame['lowerband']
+        sell += frame['middleband']
+
+        buy = float(buy)
+        sell = float(sell)
+
+        if rate <= buy:
+            lower = frame['lowerband']
+            diff = buy - lower
+            if rate > lower:
+                return 1
+            elif rate > lower - diff:
+                return 2
+            return 3
+        elif rate >= sell:
+            upper = frame['upperband']
+            diff = upper - sell
+            if rate < upper:
+                return 1
+            if rate < upper + diff:
+                return 2
+            return 3
+        return 0
+
 
 # noinspection PyUnusedLocal
 class STOCHRSIRow(Indicator):
@@ -200,6 +252,22 @@ class STOCHRSIRow(Indicator):
             return Signal.SELL
         else:
             return Signal.HOLD
+
+    def strength(self, point: pd.Timestamp, *args, **kwargs) -> float:
+        """ Determine strength of Trend """
+        assert len(self.graph)
+
+        if point:
+            frame = self.graph.loc[point]
+        else:
+            frame = self.graph.iloc[-1]
+
+        k = frame['fastk']
+        d = frame['fastd']
+
+        val = fabs(k - d)
+
+        return ceil(val / 7)
 
 
 class IndicatorContainer(object):
@@ -270,6 +338,6 @@ class IndicatorContainer(object):
 
         return Signal.HOLD
 
-    def strength(self, point: pd.Timestamp = None):
-        strengths = pd.Series([indicator.strength(point) for indicator in self.indicators])
+    def strength(self, data: pd.DataFrame, point: pd.Timestamp = None):
+        strengths = pd.Series([indicator.strength(point, data) for indicator in self.indicators])
         return strengths.mean()
