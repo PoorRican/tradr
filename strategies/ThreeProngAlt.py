@@ -150,6 +150,12 @@ class ThreeProngAlt(OscillatingStrategy):
         if side == Side.BUY:
             return True
         else:
+            # prevent false positive from incomplete buys
+            last_order = self.orders.iloc[-1]
+            if last_order['side'] == Side.BUY and last_order['amt'] < amount and \
+               self._calc_profit(last_order['amt'], rate) < self.threshold:
+                return False
+
             # handle sell
             if _trend.trend == TrendMovement.UP:
                 _min_profit = self.threshold * _trend.scalar
