@@ -5,11 +5,12 @@ Notes:
         - Replace `Market.BASE_URL` values with test URLs
 """
 
-from strategies.strategy import Strategy
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Union
 import logging
+
+from strategies.OscillatingStrategy import OscillatingStrategy
 
 
 class Backtesting(object):
@@ -21,8 +22,8 @@ class Backtesting(object):
         TODO:
             - Implement a way to store and access historical values.
     """
-    def __init__(self, strategy: Strategy):
-        self.strategy: Strategy = strategy
+    def __init__(self, strategy: OscillatingStrategy):
+        self.strategy: OscillatingStrategy = strategy
 
     @property
     def market(self):

@@ -31,6 +31,17 @@ class Signal(IntEnum):
 
 class Indicator(ABC):
     """ Abstracts statistical functions and encapsulates logic to derive discrete values.
+
+    Indicator function is defined by `_function` and is called in `process()` which updates `graph`. `graph` is
+    an internal DataFrame that stores the output of the indicator function on a time series that matches candle
+    data that was supplied to `process()`. The values of `graph` are qualified by `_row_decision()` and
+    `_row_strength()`, both of which accept a row of `graph` and return a value of `Signal` or float respectively.
+
+    During backtesting, `process()` should be called with all available market data; during a live implementation,
+    `process()` should be called with buffered candle data and `graph` will be updated atomically. Likewise, during
+    backtesting, computation of graph can be vectorized by calling `calculate_all()`, which uses `computed` to store
+    results of `Signal` and strength. Otherwise, as `graph` is atomically updated during a live implementation,
+    `signal()` and `strength()` can both be given a point to derive their respective values from `graph`.
     """
     _function: ClassVar[Callable]
     """ indicator function that is passed a single column of candle data, and ambiguous keyword arguments. """
@@ -46,7 +57,7 @@ class Indicator(ABC):
 
     def __init__(self, index: pd.Index = None):
         self.graph = self.container(index)
-        self.computed = self.container(index, columns=('decision', 'strength'))
+        self.computed = self.container(index, columns=('signal', 'strength'))
 
     @classmethod
     def container(cls, index: pd.Index = None, data: Tuple = None, columns: Sequence[str] = None) -> pd.DataFrame:
@@ -100,21 +111,64 @@ class Indicator(ABC):
     def calculate_all(self, candles: pd.DataFrame) -> NoReturn:
         assert len(self.graph)
 
-        self.computed['decision'] = self.graph.apply(self._row_decision, axis='columns', candles=candles)
+        # TODO: vectorizing computation across columns should provide greater speed increase
+
+        self.computed['signal'] = self.graph.apply(self._row_decision, axis='columns', candles=candles)
         self.computed['strength'] = self.graph.apply(self._row_strength, axis='columns', candles=candles)
 
     @abstractmethod
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> Signal:
         pass
 
-    def check(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
+    def signal(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
+        """ Return `Signal` from `point`.
+
+        First, `computed` is checked to see if a value has been calculated. If not, decision is calculated
+        from `graph`.
+
+        Args:
+            point:
+                Point in time to get `Signal` from.
+            candles:
+                Available market candle data. Is needed for certain instances of `_row_decision()`.
+
+        Returns:
+            `Signal` derived from `_function` at the given `point`.
+        """
+        if point in self.computed.index:
+            signal = self.computed.loc[point, 'signal']
+            if not isnan(signal):
+                return Signal(int(signal))
+
         assert len(self.graph)
-        row = self.graph.loc[point]
+
+        try:
+            row = self.graph.loc[point]
+        except KeyError:
+            raise KeyError
 
         return self._row_decision(row, candles)
 
     def strength(self, point: pd.Timestamp, candles: pd.DataFrame) -> float:
-        """ Determine strength of Trend for a given point"""
+        """ Return strength from `point`.
+
+        First, `computed` is checked to see if a value has been calculated. If not, strength is calculated
+        from `graph`.
+
+        Args:
+            point:
+                Point in time to get `Signal` strength from.
+            candles:
+                Available market candle data. Is needed for certain instances of `_row_strength()`.
+
+        Returns:
+            `Signal` strength derived from `_function` at the given `point`.
+        """
+        if point in self.computed.index:
+            strength = self.computed.loc[point, 'strength']
+            if not isnan(strength):
+                return float(strength)
+
         assert len(self.graph)
 
         if point:
@@ -252,11 +306,6 @@ class STOCHRSIRow(Indicator):
         self.overbought = overbought
         self.oversold = oversold
 
-    def check(self, point: pd.Timestamp, *args, **kwargs) -> Signal:
-        row = self.graph.loc[point]
-
-        return self._row_decision(row)
-
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
         fastk = row['fastk']
         fastd = row['fastd']
@@ -318,7 +367,7 @@ class IndicatorContainer(object):
     def graph(self) -> pd.DataFrame:
         return pd.concat([i.graph for i in self.indicators], axis='columns')
 
-    def check(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
+    def signal(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
         """ Infer signals from indicators.
 
         Notes:
@@ -345,7 +394,7 @@ class IndicatorContainer(object):
         # hack to get function working.
         # For some reason a sequence is getting passed to individual check functions instead of a primitive value
 
-        signals = [indicator.check(point, data) for indicator in self.indicators]
+        signals = [indicator.signal(point, data) for indicator in self.indicators]
         # TODO: use dynamic number of array length
         if signals[0] == signals[1] == signals[2]:
             return signals[0]
@@ -358,4 +407,5 @@ class IndicatorContainer(object):
 
     def calculate_all(self, candles: pd.DataFrame):
         for indicator in self.indicators:
+            indicator.process(candles)
             indicator.calculate_all(candles)

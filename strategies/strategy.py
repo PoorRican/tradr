@@ -358,13 +358,13 @@ class Strategy(ABC):
 
         # Develop indicator/oscillator data
         if hasattr(self, 'indicators'):
-            self.indicators.develop(self.market.data)
+            self.indicators.calculate_all(self.market.data)
 
         # Develop trend detector data
         if hasattr(self, 'detector'):
             # TODO: `detector.update_candles()` should be executed outside
             self.detector.update_candles()
-            self.detector.develop()
+            self.detector.calculate_all()
 
     @abstractmethod
     def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:

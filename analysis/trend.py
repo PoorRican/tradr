@@ -144,7 +144,7 @@ class TrendDetector(object):
         for freq in self._frequencies:
             point = self._process_point(point, freq)
 
-            result: Signal = self._indicators[freq].check(self.candles(freq), point)
+            result: Signal = self._indicators[freq].signal(self.candles(freq), point)
             trends[freq] = TrendMovement(result)
         return trends
 
@@ -201,3 +201,7 @@ class TrendDetector(object):
         i = list(counts.values()).index(_max)
         winner = list(counts.keys())[i]
         return winner
+
+    def calculate_all(self):
+        for freq, container in self._indicators.items():
+            container.calculate_all(self.candles(freq))

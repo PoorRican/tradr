@@ -77,7 +77,7 @@ class DeterminePositionTests(unittest.TestCase):
 
         self.strategy._oscillation = MagicMock(return_value=True)
         self.strategy._is_profitable = MagicMock(return_value=True)
-        self.strategy.indicators.check = MagicMock(return_value=Signal.SELL)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.SELL)
 
         import datetime as dt
         index = [pd.Timestamp(dt.datetime.now() - dt.timedelta(hours=i)) for i in range(10)]
@@ -87,7 +87,7 @@ class DeterminePositionTests(unittest.TestCase):
         self.assertEqual(self.strategy._determine_position(point=index[5]), (Signal.SELL, index[5]))
 
     def test_false_on_hold(self):
-        self.strategy.indicators.check = MagicMock(return_value=Signal.HOLD)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.HOLD)
 
         # assert false when `check()` returns `Signal.HOLD`
         self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
@@ -95,7 +95,7 @@ class DeterminePositionTests(unittest.TestCase):
     def test_oscillation(self):
         """ Test when out of sync with oscillation. """
         self.strategy._oscillation = MagicMock(return_value=False)
-        self.strategy.indicators.check = MagicMock(return_value=NotImplemented)
+        self.strategy.indicators.signal = MagicMock(return_value=NotImplemented)
 
         # assert false when `Signal.BUY/SELL`, but `_oscillation()` is False
         self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
@@ -104,7 +104,7 @@ class DeterminePositionTests(unittest.TestCase):
         """ Test when trade is not profitable """
         self.strategy._oscillation = MagicMock(return_value=True)
         self.strategy._is_profitable = MagicMock(return_value=False)
-        self.strategy.indicators.check = MagicMock(return_value=Signal.SELL)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.SELL)
 
         # assert false when `_oscillation()` is True, but `_is_profitable()` is False
         self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
@@ -113,7 +113,7 @@ class DeterminePositionTests(unittest.TestCase):
         """ Assert correct return structure """
         self.strategy._oscillation = MagicMock(return_value=True)
         self.strategy._is_profitable = MagicMock(return_value=True)
-        self.strategy.indicators.check = MagicMock(return_value=Signal.BUY)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.BUY)
 
         import datetime as dt
         now = pd.Timestamp(dt.datetime.now())

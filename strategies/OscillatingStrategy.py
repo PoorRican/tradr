@@ -74,7 +74,7 @@ class OscillatingStrategy(FinancialsMixin, ABC):
         if self._remaining <= 1:
             pass
 
-        signal: Signal = self.indicators.check(self.market.data, point)
+        signal: Signal = self.indicators.signal(self.market.data, point)
         if self._oscillation(signal, point=point):
             signal: Side = Side(signal)
             rate = self._calc_rate(point, signal)

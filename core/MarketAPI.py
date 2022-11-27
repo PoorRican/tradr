@@ -172,22 +172,25 @@ class MarketAPI(Market, ABC):
 
     def _repair_candles(self, data: pd.DataFrame) -> pd.DataFrame:
         """ Fill in missing values for candle data via interpolation. """
+        buffer = pd.DataFrame(data, copy=True, dtype=float)
+
         start = data.iloc[0].name
         end = data.iloc[-1].name
         attrs = data.attrs
-        freq = attrs['freq']
+        _freq = self.translate_period(attrs['freq'])
 
         # drop invalid rows
+        index = data.index
         # data.drop(data.loc[data['volume'] == 0], inplace=True)        # drop rows w/ 0 volume
-        data.drop_duplicates(keep="first", inplace=True)
+        buffer.drop_duplicates(keep="first", inplace=True)
+        buffer.drop(index=index[index.duplicated()], inplace=True)
 
-        _freq = self.translate_period(freq)
         index = pd.date_range(start=start, end=end, freq=_freq, tz=data.index.tz)
-
-        buffer = pd.DataFrame(index=index, columns=list(self.columns), dtype=float)
-
-        buffer.update(data)
         buffer.attrs = attrs
+
+        buffer = buffer.reindex(index)
         buffer.interpolate(inplace=True)
+
+        assert buffer.index.is_monotonic_increasing
 
         return buffer
