@@ -225,5 +225,36 @@ class AssetsCapitalTests(BaseFinancialsMixinTestCase):
             self.assertEqual(-10, self.strategy.capital)
 
 
+class PNLTestCases(BaseFinancialsMixinTestCase):
+    def test_pnl(self):
+        self.skipTest('')
+
+    def test_unrealized_gain(self):
+        # fill incomplete
+        _incomplete_rates = [200, 150, 225]
+        _incomplete_amt = [3, 2, 1]
+        _incomplete_ids = [1, 2, 3]
+        incomplete = pd.DataFrame({'rate': _incomplete_rates, 'amt': _incomplete_amt, 'id': _incomplete_ids})
+        self.strategy.unpaired = MagicMock(return_value=incomplete)
+
+        # fill orders
+        _order_rates = [150, 250]
+        _order_amt = [2, 1]
+        _order_side = [Side.BUY, Side.BUY]
+        _order_ids = [2, 4]
+        orders = pd.DataFrame({'rate': _order_rates, 'amt': _order_amt, 'id': _order_ids, 'side': _order_side})
+        self.strategy.orders = orders
+
+        last_order = self.strategy.orders.tail(1)
+
+        # assert sum of incomplete + last order
+        unpaired = pd.concat([incomplete, last_order], ignore_index=True)
+        _max = max(unpaired['rate'])
+        _sum = unpaired['amt'].sum() * _max
+
+        self.assertEqual(_sum, 7 * 250, 'Expected calculation is incorrect')
+        self.assertEqual(_sum, self.strategy.unrealized_gain(), 'Unrealized gain did not return correct sum')
+
+
 if __name__ == '__main__':
     unittest.main()
