@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from math import fabs, ceil, isnan
+import matplotlib.pyplot as plt
 from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple, Union
 import pandas as pd
 from talib import BBANDS, STOCHRSI, MACD
@@ -43,6 +44,7 @@ class Indicator(ABC):
     results of `Signal` and strength. Otherwise, as `graph` is atomically updated during a live implementation,
     `signal()` and `strength()` can both be given a point to derive their respective values from `graph`.
     """
+    name: ClassVar[str]
     _function: ClassVar[Callable]
     """ indicator function that is passed a single column of candle data, and ambiguous keyword arguments. """
 
@@ -184,6 +186,7 @@ class Indicator(ABC):
 
 
 class MACDRow(Indicator):
+    name = 'MACD'
     _function = MACD
     _parameters = {'fastperiod': 6, 'slowperiod': 26, 'signalperiod': 9}
     _source = 'close'
@@ -220,6 +223,7 @@ class MACDRow(Indicator):
 
 
 class BBANDSRow(Indicator):
+    name = 'BB'
     _function = BBANDS
     _parameters = {'timeperiod': 20}
     _source = 'close'
@@ -295,6 +299,7 @@ class BBANDSRow(Indicator):
 
 # noinspection PyUnusedLocal
 class STOCHRSIRow(Indicator):
+    name = 'STOCHRSI'
     _function = STOCHRSI
     _parameters = {'timeperiod': 14, 'fastk_period': 3, 'fastd_period': 3}
     _source = 'close'
@@ -366,6 +371,19 @@ class IndicatorContainer(object):
     @property
     def graph(self) -> pd.DataFrame:
         return pd.concat([i.graph for i in self.indicators], axis='columns')
+
+    @property
+    def computed(self) -> pd.DataFrame:
+        return pd.concat([i.computed for i in self.indicators], axis='columns',
+                         keys=[i.name for i in self.indicators])
+
+    def plot(self):
+        assert self.computed.index == self.graph.index
+
+        index = self.computed.index
+        plt.figure(figsize=[50, 25], dpi=250)
+        plt.hist(index, self.computed.xs('strength', axis=1, level=2).mean(axis='columns'))
+        plt.bar(index, self.computed.xs('signal', axis=1, level=2).__mul__(5).mean(axis='columns'))
 
     def signal(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
         """ Infer signals from indicators.
