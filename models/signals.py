@@ -213,7 +213,7 @@ class MACDRow(Indicator):
         macd = row['macd']
 
         val = fabs((signal + macd) / 2)
-        val /= 400
+        val /= 100
         if isnan(val):
             return 0
         return ceil(val)
@@ -330,7 +330,7 @@ class STOCHRSIRow(Indicator):
 
         if isnan(val):
             return 0
-        return ceil(val / 7)
+        return ceil(val / 5)
 
 
 class IndicatorContainer(object):
