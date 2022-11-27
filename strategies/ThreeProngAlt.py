@@ -1,6 +1,6 @@
+from math import ceil
 import pandas as pd
 from typing import Sequence, Union
-from warnings import warn
 
 from analysis.trend import TrendDetector
 from models.signals import MACDRow, BBANDSRow, STOCHRSIRow
@@ -96,42 +96,35 @@ class ThreeProngAlt(OscillatingStrategy):
             last_order = self.orders.iloc[-1]
 
         rate = self._calc_rate(extrema, side)
+        _trend = self.detector.characterize(extrema)
+        _more = 1 + _trend.scalar / 10
+        _less = ceil(_trend.scalar / 2)
         if side == Side.SELL:
             incomplete = self._check_unpaired(rate)
 
             total = last_order['amt'] + incomplete['amt'].sum()
 
-            # modulate amount based on market trend
-
-            # TODO: add partially sold buys when orders post using this
-
-            _trend = self.detector.characterize(extrema)
             # sell more during strong uptrend
             if _trend.trend is TrendMovement.UP:
-                return total * _trend.scalar
+                return total * _more
             # sell less during strong downtrend
             elif _trend.trend is TrendMovement.DOWN:
-                return total / _trend.scalar
+                return total / _less
 
             if total > self.assets:
-                warn("Calculated total of assets to sell exceeds actual total")
                 return self.assets
             return total
 
         if side == Side.BUY:
             amt = self.starting / rate
 
-            # modulate amount based on market trend
-            _trend = self.detector.characterize(extrema)
-
             # buy less during strong uptrend; buy more during strong downtrend
             if _trend.trend is TrendMovement.UP:
-                return amt / _trend.scalar
+                return amt / _less
             elif _trend.trend is TrendMovement.DOWN:
-                return amt * _trend.scalar
+                return amt * _more
 
             if self.capital < amt * rate:
-                warn("Calculated amount of assets to buy exceeds amount of available capital")
                 return self.capital / rate
             return amt
 
@@ -159,7 +152,7 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             # handle sell
             if _trend.trend == TrendMovement.UP:
-                _min_profit = self.threshold * _trend.scalar * _trend.scalar
+                _min_profit = self.threshold * _trend.scalar
             else:
                 _min_profit = self.threshold
             return self._calc_profit(amount, rate) >= _min_profit
