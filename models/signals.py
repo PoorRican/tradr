@@ -213,7 +213,7 @@ class MACDRow(Indicator):
         macd = row['macd']
 
         val = fabs((signal + macd) / 2)
-        val /= 100
+        val *= 5000
         if isnan(val):
             return 0
         return ceil(val)
