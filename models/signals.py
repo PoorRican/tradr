@@ -378,12 +378,12 @@ class IndicatorContainer(object):
                          keys=[i.name for i in self.indicators])
 
     def plot(self):
-        assert self.computed.index == self.graph.index
+        assert self.computed.index.equals(self.graph.index)
 
         index = self.computed.index
         plt.figure(figsize=[50, 25], dpi=250)
         plt.hist(index, self.computed.xs('strength', axis=1, level=2).mean(axis='columns'))
-        plt.bar(index, self.computed.xs('signal', axis=1, level=2).__mul__(5).mean(axis='columns'))
+        plt.bar(index, self.computed.xs('signal', axis=1, level=2).mean(axis='columns'))
 
     def signal(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
         """ Infer signals from indicators.
