@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import concurrent.futures
 from enum import IntEnum
 from math import fabs, ceil, isnan
 import matplotlib.pyplot as plt
@@ -365,8 +366,11 @@ class IndicatorContainer(object):
         else:
             _buffer = data.iloc[_buffer_len - 1:]
 
-        for indicator in self.indicators:
-            indicator.process(_buffer)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            # Start the load operations and mark each future with its URL
+            fs = [executor.submit(indicator.process, _buffer) for indicator in self.indicators]
+            concurrent.futures.wait(fs)
+            # result would be accessible by `future.result for future in ...`
 
     @property
     def graph(self) -> pd.DataFrame:
@@ -412,15 +416,19 @@ class IndicatorContainer(object):
         # hack to get function working.
         # For some reason a sequence is getting passed to individual check functions instead of a primitive value
 
-        signals = [indicator.signal(point, data) for indicator in self.indicators]
-        # TODO: use dynamic number of array length
-        if signals[0] == signals[1] == signals[2]:
-            return signals[0]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            fs = [executor.submit(indicator.signal, point, data) for indicator in self.indicators]
+            signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+            if len(signals.unique()) == 1:
+                return Signal(signals.mode()[0])
 
         return Signal.HOLD
 
     def strength(self, data: pd.DataFrame, point: pd.Timestamp = None):
-        strengths = pd.Series([indicator.strength(point, data) for indicator in self.indicators])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            fs = [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
+            # TODO: use dynamic number of array length
+            strengths = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         return strengths.mean()
 
     def calculate_all(self, candles: pd.DataFrame):
