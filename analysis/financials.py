@@ -236,6 +236,10 @@ class FinancialsMixin(Strategy, ABC):
             Value of unsold assets sold at most expensive price.
         """
         unpaired = self.unpaired()
+
+        if unpaired.empty:
+            return 0
+
         _last_order = self.orders.tail(1)
         # NOTE: indexing `_last_order` does not return literals but instead returns rows and columns
         if Side.BUY in _last_order['side'] and not _last_order['id'].isin(unpaired['id']).max():
