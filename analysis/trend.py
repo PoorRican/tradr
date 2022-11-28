@@ -1,3 +1,4 @@
+import concurrent.futures
 from math import floor
 import pandas as pd
 from pytz import timezone
@@ -69,7 +70,7 @@ class TrendDetector(object):
         assert frequency in self._frequencies
 
         # fetch via multi-index
-        return self._candles.loc[frequency].dropna()
+        return self._candles.loc[frequency]
 
     def develop(self) -> NoReturn:
         """ Compute all indicator functions across all frequencies using existing candle data.
@@ -123,7 +124,7 @@ class TrendDetector(object):
             point = point.floor(_freq, nonexistent='shift_backward')
         return point
 
-    def _fetch_trends(self, point: pd.Timestamp = None) -> Mapping[str, 'TrendMovement']:
+    def _fetch_trends(self, executor, point: pd.Timestamp = None) -> TrendMovement:
         """
 
         Args:
@@ -140,26 +141,27 @@ class TrendDetector(object):
         Returns:
 
         """
-        trends: Mapping['str': 'TrendMovement'] = {}
-        for freq in self._frequencies:
-            point = self._process_point(point, freq)
-
-            result: Signal = self._indicators[freq].signal(self.candles(freq), point)
-            trends[freq] = TrendMovement(result)
-        return trends
+        fs = []
+        [fs.extend(future) for future in [
+            container.signal_threads(executor, self._process_point(point, freq),
+                                     self.candles(freq)
+                                     ) for freq, container in self._indicators.items()]]
+        signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+        return TrendMovement(signals.mode()[0])
 
     def update_candles(self) -> NoReturn:
         """ Update `candles` with current market data """
         self._candles = self._fetch()
 
-    def _determine_scalar(self, point: Optional[pd.Timestamp] = None) -> int:
-        results = []
-        for freq, container in self._indicators.items():
-            _point = self._process_point(point, freq)
-            results.append(container.strength(self.candles(freq), _point))
+    def _determine_scalar(self, executor, point: Optional[pd.Timestamp] = None) -> int:
+        fs = []
+        [fs.extend(future) for future in [
+            container.strength_threads(executor, self._process_point(point, freq),
+                                       self.candles(freq)
+                                       ) for freq, container in self._indicators.items()]]
+        results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
         # TODO: only incorporate `strength()` from outputs from consensus
-        results = pd.Series(results)
         return int(floor(results.mean())) or 1
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
@@ -186,21 +188,12 @@ class TrendDetector(object):
         if hasattr(point, 'timestamp'):
             point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
 
-        results = self._fetch_trends(point)
-        consensus = self._determine_consensus(list(results.values()))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            _signals = executor.submit(self._fetch_trends, executor, point)
+            _strengths = executor.submit(self._determine_scalar, executor, point)
 
-        return MarketTrend(consensus, scalar=self._determine_scalar(point))
-
-    @staticmethod
-    def _determine_consensus(values: Sequence['TrendMovement']) -> TrendMovement:
-        """ Return the most common value in a dict containing a list of returned results """
-        counts = {}
-        for v in TrendMovement.__members__.values():
-            counts[v] = values.count(v)
-        _max = max(counts.values())
-        i = list(counts.values()).index(_max)
-        winner = list(counts.keys())[i]
-        return winner
+            concurrent.futures.wait([_signals, _strengths])
+            return MarketTrend(_signals.result(), scalar=_strengths.result())
 
     def calculate_all(self):
         for freq, container in self._indicators.items():

@@ -389,7 +389,12 @@ class IndicatorContainer(object):
         plt.hist(index, self.computed.xs('strength', axis=1, level=2).mean(axis='columns'))
         plt.bar(index, self.computed.xs('signal', axis=1, level=2).mean(axis='columns'))
 
-    def signal(self, data: pd.DataFrame, point: pd.Timestamp = None) -> Signal:
+    def signal_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
+            -> Sequence[concurrent.futures.Future]:
+        return [executor.submit(indicator.signal, point, data) for indicator in self.indicators]
+
+    def signal(self, data: pd.DataFrame, point: pd.Timestamp = None,
+               executor: concurrent.futures.Executor = None) -> Union['Signal', None]:
         """ Infer signals from indicators.
 
         Notes:
@@ -407,6 +412,8 @@ class IndicatorContainer(object):
                 Market data. Passed for a reference for indicators to use.
             point:
                 Point in time. Used during backtesting. Defaults to last frame in `self.graph`
+            executor:
+                Optional argument when this function call is nested in a threaded call tree.
 
         Returns:
             Trade signal based on consensus from indicators.
@@ -416,15 +423,28 @@ class IndicatorContainer(object):
         # hack to get function working.
         # For some reason a sequence is getting passed to individual check functions instead of a primitive value
 
+        if executor is not None:
+            self.signal_threads(executor, point, data)
+            return None
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            fs = [executor.submit(indicator.signal, point, data) for indicator in self.indicators]
+            fs = self.signal_threads(executor, point, data)
             signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
             if len(signals.unique()) == 1:
                 return Signal(signals.mode()[0])
 
         return Signal.HOLD
 
-    def strength(self, data: pd.DataFrame, point: pd.Timestamp = None):
+    def strength_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
+            -> Sequence[concurrent.futures.Future]:
+        return [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
+
+    def strength(self, data: pd.DataFrame, point: pd.Timestamp = None,
+                 executor: concurrent.futures.Executor = None) -> Union[float, None]:
+        if executor is not None:
+            self.signal_threads(executor, point, data)
+            return None
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             fs = [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
             # TODO: use dynamic number of array length
