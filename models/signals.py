@@ -397,8 +397,8 @@ class IndicatorContainer(object):
 
         index = self.computed.index
         plt.figure(figsize=[50, 25], dpi=250)
-        plt.hist(index, self.computed.xs('strength', axis=1, level=2).mean(axis='columns'))
-        plt.bar(index, self.computed.xs('signal', axis=1, level=2).mean(axis='columns'))
+        plt.hist(index, self.computed.xs('strength', axis=1, level=1).mean(axis='columns'))
+        plt.bar(index, self.computed.xs('signal', axis=1, level=1).mean(axis='columns'))
 
     def signal_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
             -> Sequence[concurrent.futures.Future]:
