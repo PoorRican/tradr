@@ -85,8 +85,11 @@ class TrendDetector(object):
         assert len(self._candles) != 0
         assert len(self._indicators) != 0
 
-        for freq in self._frequencies:
-            self._indicators[freq].develop(self.candles(freq))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            fs = []
+            [fs.extend(executor.submit(container.develop,
+                                       self.candles(freq)).result()) for freq, container in self._indicators.items()]
+            concurrent.futures.wait(fs)
 
     def _fetch(self) -> pd.DataFrame:
         """ Get all candle data then combine into multi-indexed `DataFrame`.

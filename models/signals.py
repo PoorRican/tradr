@@ -348,7 +348,12 @@ class IndicatorContainer(object):
     def __init__(self, indicators: Sequence[type(Indicator)], index: Optional[pd.Index] = None):
         self.indicators = [i(index) for i in indicators]
 
-    def develop(self, data: pd.DataFrame, buffer: bool = False) -> NoReturn:
+    def develop_threads(self, executor, candles: pd.DataFrame) -> Sequence['concurrent.futures.Future']:
+        fs = [executor.submit(indicator.process, candles) for indicator in self.indicators]
+        return fs
+
+    def develop(self, data: pd.DataFrame, buffer: bool = False,
+                executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Generate indicator data for all available given candle data.
 
         Used to update `self.graph` which is dedicated to store all indicator data and should only be updated
@@ -359,7 +364,13 @@ class IndicatorContainer(object):
                 Candle data. Should be shortened (by not using older data) when speed becomes an issue
             buffer:
                 Flag that turns buffering on or off
+            executor:
+                Optional argument when this function call is nested in a threaded call tree.
         """
+        if executor is not None:
+            self.develop_threads(executor, data)
+            return None
+
         _buffer_len = 50
         if len(data) < _buffer_len or not buffer:
             _buffer = data
@@ -368,7 +379,7 @@ class IndicatorContainer(object):
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             # Start the load operations and mark each future with its URL
-            fs = [executor.submit(indicator.process, _buffer) for indicator in self.indicators]
+            fs = self.develop_threads(executor, _buffer)
             concurrent.futures.wait(fs)
             # result would be accessible by `future.result for future in ...`
 
