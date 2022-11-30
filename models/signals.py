@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import concurrent.futures
 from enum import IntEnum
-from math import fabs, ceil, isnan
+from math import fabs, ceil, isnan, floor
 import matplotlib.pyplot as plt
 from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple, Union
 import pandas as pd
@@ -217,8 +217,8 @@ class MACDRow(Indicator):
         macd = row['macd']
 
         val = fabs((signal + macd) / 2)
-        val *= 5000
-        if isnan(val):
+        val *= 500
+        if isnan(val) or not (macd < signal < 0 or macd > signal > 0):
             return 0
         return ceil(val)
 
@@ -309,8 +309,14 @@ class STOCHRSIRow(Indicator):
 
     def __init__(self, *args, overbought: float = 20, oversold: float = 80, **kwargs):
         super().__init__(*args, **kwargs)
-        self.overbought = overbought
-        self.oversold = oversold
+        self._overbought = overbought
+        self._oversold = oversold
+
+    def oversold(self, d: float, k: float) -> bool:
+        return self._oversold < d < k
+
+    def overbought(self, d: float, k: float) -> bool:
+        return self._overbought > d > k
 
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
         fastk = row['fastk']
@@ -321,9 +327,9 @@ class STOCHRSIRow(Indicator):
         if hasattr(fastd, '__iter__'):
             fastd = fastd[0]
 
-        if self.overbought > fastd > fastk:
+        if self.overbought(fastd, fastk):
             return Signal.BUY
-        elif self.oversold < fastd < fastk:
+        elif self.oversold(fastd, fastk):
             return Signal.SELL
         else:
             return Signal.HOLD
@@ -334,7 +340,7 @@ class STOCHRSIRow(Indicator):
 
         val = fabs(k - d)
 
-        if isnan(val):
+        if isnan(val) or not self.overbought(d, k) or not self.oversold(d, k):
             return 0
         return ceil(val / 5)
 
