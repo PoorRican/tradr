@@ -17,6 +17,11 @@ class MarketAPI(Market, ABC):
 
     Posts sell and buy orders, records historical candle data.
 
+    For specific platforms, functions need to be defined to post and process orders, and request other data.
+    However, all derived class instances are stored in the class var `instances`, and can be accessed by instance
+    `key`. During program start-up and shutdown, `snapshot()`/`restore()` functionality saves and restores all
+    running instances.
+
     Fields:
         __name__ (str):
             Platform name. Used for setting flag attributes and filenames.
@@ -55,13 +60,11 @@ class MarketAPI(Market, ABC):
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
-        super().__init__(symbol, freq)
+        super().__init__(symbol, freq, root)
 
         if api_key and api_secret:
             self.api_key = api_key
             self.api_secret = api_secret.encode()
-
-        self.root = root
 
         if update:
             self.update()
