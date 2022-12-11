@@ -43,12 +43,20 @@ class Strategy(ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, market: MarketAPI, root: str = DATA_ROOT):
+    def __init__(self, market: MarketAPI, freq: str, root: str = DATA_ROOT):
         """
 
         Args:
             market:
                 Platform to use for market data and trading.
+
+                Instances of both `Strategy` and `Market` are interchangeable at any time and would only be hard-linked
+                for when there are un-executed trades on-the-books. This leaves room for multithreading and concurrency
+                between multiple instances of both `Strategy` and `Market`.
+
+            freq:
+                Operating frequency for strategy. Both trade decisions (signals derived from `indicator` and how often
+                trading decisions are evaluated) will be derived from this frequency.
             root:
                 Root directory to store candle data
         """
@@ -73,17 +81,7 @@ class Strategy(ABC):
         """
 
         self.market = market
-        """ Reference to `Market` object.
-        
-        Notes:        
-        
-            -   Interchangeability and Concurrency:
-            
-                Instances of both `Strategy` and `Market` are interchangeable at any time and would only be hard-linked
-                for when there are un-executed trades on-the-books. This leaves room for multithreading and concurrency
-                between multiple instances of both `Strategy` and `Market`.
-        """
-
+        self.freq = freq
         self.root = root
 
     @classmethod
@@ -91,7 +89,13 @@ class Strategy(ABC):
         instances = []
         # TODO: markets need to by dynamically loaded
         for i in params:
-            instances.append(cls(market=market))
+            instances.append(cls(market=market, **i))
+
+        return instances
+
+    @property
+    def candles(self):
+        return self.market.candles(self.freq)
 
     def load(self):
         """ Load stored attributes and sequence data from instance directory onto memory.
@@ -212,7 +216,7 @@ class Strategy(ABC):
         rate = self._calc_rate(extrema, side)
         trade: Trade = Trade(amount, rate, side)
 
-        successful: Union[SuccessfulTrade, 'False'] = self.market.place_order(trade)
+        successful: Union[SuccessfulTrade, 'False'] = self.market.post_order(trade)
         if successful:
             self._post_sale(extrema, successful)
             add_to_df(self, 'orders', extrema, successful)
@@ -358,12 +362,10 @@ class Strategy(ABC):
 
         # Develop indicator/oscillator data
         if hasattr(self, 'indicators'):
-            self.indicators.calculate_all(self.market.data)
+            self.indicators.calculate_all(self.candles)
 
         # Develop trend detector data
         if hasattr(self, 'detector'):
-            # TODO: `detector.update_candles()` should be executed outside
-            self.detector.update_candles()
             self.detector.calculate_all()
 
     @abstractmethod

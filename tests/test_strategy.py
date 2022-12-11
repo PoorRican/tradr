@@ -65,7 +65,7 @@ class StrategyAddOrderTests(BaseStrategyTestCase):
         self.strategy._calc_rate = MagicMock(return_value=0)
 
         trade = SuccessfulTrade(0, 0, Side.BUY, 'id')
-        self.market.place_order = MagicMock(return_value=trade)
+        self.market.post_order = MagicMock(return_value=trade)
         self.strategy._post_sale = MagicMock()
 
         with patch('strategies.strategy.add_to_df') as _mock_add_to_df:
@@ -82,7 +82,7 @@ class StrategyAddOrderTests(BaseStrategyTestCase):
         self.strategy._calc_amount = MagicMock(return_value=0)
         self.strategy._calc_rate = MagicMock(return_value=0)
 
-        self.market.place_order = MagicMock(return_value=False)
+        self.market.post_order = MagicMock(return_value=False)
         self.strategy._post_sale = MagicMock(side_effect=RuntimeError('`_post_sale()` should not have been called'))
 
         with patch('strategies.strategy.add_to_df') as _mock_add_to_df:
@@ -192,16 +192,16 @@ class StrategyCalcAllTests(BaseStrategyTestCase):
     def test_only_indicators(self):
         """ Test when `indicators` are the only available instance attribute. """
         self.strategy.indicators = MagicMock()
-        self.market.data = MagicMock()
+        self.market._data = MagicMock()
 
         with patch.object(self.strategy.indicators, 'develop') as _mock_develop:
             self.assertIsNone(self.strategy.calculate_all())
-            _mock_develop.assert_called_once_with(self.market.data)
+            _mock_develop.assert_called_once_with(self.market._data)
 
     def test_only_detector(self):
         """ Test when `detector` are the only available instance attribute. """
         self.strategy.detector = MagicMock()
-        self.market.data = MagicMock()
+        self.market._data = MagicMock()
 
         with patch.object(self.strategy.detector, 'develop') as _mock_develop:
             self.assertIsNone(self.strategy.calculate_all())
@@ -215,10 +215,10 @@ class StrategyCalcAllTests(BaseStrategyTestCase):
         self.strategy.indicators = MagicMock()
         self.strategy.indicators.develop = MagicMock()
 
-        self.market.data = MagicMock()
+        self.market._data = MagicMock()
 
         self.assertIsNone(self.strategy.calculate_all())
-        self.strategy.indicators.develop.assert_called_once_with(self.market.data)
+        self.strategy.indicators.develop.assert_called_once_with(self.market._data)
         self.strategy.detector.develop.assert_called_once()
 
 

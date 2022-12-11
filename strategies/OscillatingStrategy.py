@@ -11,6 +11,14 @@ from models.trades import Side
 
 class OscillatingStrategy(FinancialsMixin, ABC):
     def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h', **kwargs):
+        """
+        Args:
+            indicators:
+            timeout:
+                Timeout frequency for sequential buy orders. Used by `_oscillation()` frequency.
+            **kwargs:
+                Keyword Args passed to `FinancialsMixin.__init__()`
+        """
         super().__init__(**kwargs)
 
         self.timeout: str = timeout
@@ -69,12 +77,12 @@ class OscillatingStrategy(FinancialsMixin, ABC):
             `self.indicators.develop()` needs to be called beforehand.
         """
         if not point:
-            point = self.market.data.iloc[-1].name
+            point = self.market.most_recent_timestamp
 
         if self._remaining <= 1:
             pass
 
-        signal: Signal = self.indicators.signal(self.market.data, point)
+        signal: Signal = self.indicators.signal(self.candles, point)
         if self._oscillation(signal, point=point):
             signal: Side = Side(signal)
             rate = self._calc_rate(point, signal)

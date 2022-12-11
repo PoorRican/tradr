@@ -2,7 +2,26 @@ import pandas as pd
 import requests
 from os import path
 from datetime import datetime
+import yaml
 
+
+TIMESTAMP_REPR_STR = '!timestamp'
+
+
+# Store Timestamp in YAML
+def timestamp_representer(dumper, data):
+    return dumper.represent_scalar(TIMESTAMP_REPR_STR, str(data))
+
+
+def timestamp_constructor(loader, node):
+    return pd.Timestamp(node.value)
+
+
+yaml.add_representer(pd.Timestamp, timestamp_representer)
+yaml.add_constructor(TIMESTAMP_REPR_STR, timestamp_constructor)
+
+
+# Manage Root
 
 def _project_root() -> str:
     _root = path.join(__file__, path.pardir, path.pardir)
@@ -52,7 +71,7 @@ def get_candles(t='1m') -> pd.DataFrame:
 def combine_data(existing, new):
     """ Combines, cleans and sorts DataFrames """
     joined = existing.append(new)
-    joined[~joined.index.duplicated(keep='last')]
+    joined = joined[~joined.index.duplicated(keep='last')]
     joined.sort_values('dt', inplace=True)
     return joined[pd.notnull(joined.index)]
 

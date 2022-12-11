@@ -363,6 +363,6 @@ class FinancialsMixin(Strategy, ABC):
         sells = o[o['side'] == -1]
         buys = o[o['side'] == 1]
         plt.figure(figsize=[50, 25], dpi=250)
-        plt.plot(self.market.data.index, self.market.data['close'], color=to_rgba('red', 0.5))
+        plt.plot(self.candles.index, self.candles['close'], color=to_rgba('red', 0.5))
         plt.scatter(buys.index, buys['rate'], buys['amt'] * size, marker="^", color=to_rgba('green', .8))
         plt.scatter(sells.index, sells['rate'], sells['amt'] * size, marker="v", color=to_rgba('blue', 1))

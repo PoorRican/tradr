@@ -87,7 +87,7 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             third = 'low'
 
-        return self.market.data.loc[extrema][['open', 'close', third]].mean()
+        return self.candles.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         if self.orders.empty:

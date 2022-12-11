@@ -19,7 +19,7 @@ class SimulatedMarketTestCases(unittest.TestCase):
         market = SimulatedMarket()
         trade = Trade(1, 2, Side.BUY)
         for i in range(10):
-            self.assertTrue(market.place_order(trade), 'trade not accepted')
+            self.assertTrue(market.post_order(trade), 'trade not accepted')
         self.assertEqual(market.orders, 10)
 
 

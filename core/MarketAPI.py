@@ -1,14 +1,16 @@
+import datetime
 from abc import ABC, abstractmethod
 import logging
 import pandas as pd
 from os import path
-from typing import Dict, List, NoReturn, Union
+from pytz import timezone
+from typing import Dict, List, NoReturn, Union, Optional, Tuple
 import urllib3
 from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
-from models.data import json_to_df, DATA_ROOT, ROOT
+from models.data import DATA_ROOT, ROOT
 from models.trades import Trade, SuccessfulTrade
 
 
@@ -43,24 +45,24 @@ class MarketAPI(Market, ABC):
 
     instances: Dict[str, 'MarketAPI'] = {}
 
-    def __init__(self, api_key: str = None, api_secret: str = None, freq: str = None,
-                 root: str = DATA_ROOT, update=True, symbol: str = None):
+    def __init__(self, api_key: str = None, api_secret: str = None,
+                 root: str = DATA_ROOT, update=True, auto_update=True, symbol: str = None):
         """
         Args:
             api_key:
                 API key
             api_secret:
                 API secret
-            freq:
-                candle frequency
             root:
                 root directory to store candle data
             update:
                 flag to disable fetching active market data. Reads any cached file by default.
+            auto_update:
+                Flag to disable auto-updating. Prevents checking of stale candle data.
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
-        super().__init__(symbol, freq, root)
+        super().__init__(symbol, root)
 
         if api_key and api_secret:
             self.api_key = api_key
@@ -68,13 +70,85 @@ class MarketAPI(Market, ABC):
 
         if update:
             self.update()
-            self.save()
+        else:
+            self.load()
+
+        self.auto_update = auto_update
 
         self.instances[self.id] = self
 
+    @property
+    def _stale_candles(self) -> Tuple[str]:
+        """ Check all candles for stale data
+
+        Returns
+            A list of frequencies that need to be updated.
+        """
+        now = datetime.datetime.now(tz=timezone("US/Pacific"))
+        stale = []
+        for freq in self.valid_freqs:
+            _stale = self._check_candle_age(freq, now)
+            if _stale:
+                stale.append(freq)
+
+        return tuple(stale)
+
+    def _check_candle_age(self, frequency: str = None, now: datetime.datetime = None) -> bool:
+        """ Check if candle data is expired.
+
+        Candle data is considered expired the difference between last index and the current
+        time are greater than the index frequency.
+
+        Args:
+            frequency:
+                Candle data to check
+
+            now:
+                Pre-calculated `datetime` for current time.
+
+        Returns
+            True if candle data is stale and needs to be updated. Otherwise, returns False.
+        """
+        if now is None:
+            now = datetime.datetime.now(tz=timezone("US/Pacific"))
+        data = self.candles(frequency)
+        last_point = data.iloc[-1].name
+        delta: pd.Timedelta = now - last_point
+
+        return delta > pd.Timedelta(frequency)
+
     @abstractmethod
-    def post(self, endpoint: str, data: dict = None) -> dict:
+    def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+        """ Low-level function to retrieve candle data. """
         pass
+
+    @abstractmethod
+    def _translate(self, trade: Trade, response: dict) -> 'SuccessfulTrade':
+        """ Generate `SuccessfulTrade` using data returned from """
+        pass
+
+    def _update_frequency(self, frequency: str) -> NoReturn:
+        assert frequency in self.valid_freqs
+        assert frequency in self._data.index.levels[0]
+
+        self._data.loc[frequency] = self.fetch_candles(frequency)
+
+    def candles(self, freq: str) -> pd.DataFrame:
+        """ Retrieve specified candle data.
+
+        `_data` contains candle data for all frequencies, but index contains keys which correspond to
+        different frequencies. This function checks that `freq` is valid.
+
+        Also, when `auto_update` is True, this function checks that data is still valid by calling
+        `_check_candle_age()` which returns True if candle data is stale.
+        """
+        assert freq in self.valid_freqs
+        assert freq in self._data.index.levels[0]
+
+        if self.auto_update and self._check_candle_age(freq):
+            self._update_frequency(freq)
+
+        return self._data.loc[freq]
 
     @classmethod
     def restore(cls, fn: str = None) -> NoReturn:
@@ -103,23 +177,11 @@ class MarketAPI(Market, ABC):
 
         lines: List[Dict] = []
         for i in cls.instances.values():
-            lines.append({'symbol': i.symbol, 'freq': i.freq})
+            lines.append({'symbol': i.symbol})
             i.save()
 
         with open(path.join(ROOT, fn), 'w') as f:
             safe_dump(lines, f)
-
-    @property
-    def filename(self) -> str:
-        """ Generate filename representing candle data.
-
-        Notes:
-            Each different candle interval is stored separately from other intervals from the same source.
-
-        Returns:
-            Relative filename with candle source and interval
-        """
-        return path.join(self.root, self.__name__ + '_' + self.freq + ".pkl")
 
     def update(self) -> None:
         """ Updates `data` with recent candle data.
@@ -127,23 +189,25 @@ class MarketAPI(Market, ABC):
             Because this function takes time. It should not be called in `__init__()`
             and should be run asynchronously.
         """
+        self.load()
+
         try:
-            self.load()
-            data = self.get_candles()
+            _data = []
+            for freq in self.valid_freqs:
+                _data.append(self.fetch_candles(freq))
+
+            data = pd.concat(_data, axis='index', keys=self.valid_freqs)
             data = self._combine_candles(data)
-            self.data = data
+
+            data.index = pd.MultiIndex.from_tuples(data.index)      # convert to MultiIndex
+            self._data = data
+            # self.save()
         except urllib3.HTTPSConnectionPool as e:
             logging.error(f'Connection error during `MarketAPI.update(): {e}')
             warnings.warn("Connection error")
-            self.load(ignore=False)
 
     @abstractmethod
-    def _convert(self, trade: Trade, response: dict) -> 'SuccessfulTrade':
-        """ Generate `SuccessfulTrade` """
-        pass
-
-    @abstractmethod
-    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
+    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
         """ Post order to market.
 
         Args:
@@ -163,33 +227,27 @@ class MarketAPI(Market, ABC):
         """
         pass
 
-    @abstractmethod
-    def get_candles(self, *args, **kwargs):
-        pass
-
     def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
-        combined = pd.concat([self.data, incoming])
-        combined.drop_duplicates(inplace=True)
-        combined.attrs = incoming.attrs
+        combined = pd.concat([self._data, incoming])
+        combined = combined[~combined.index.duplicated(keep="first")]         # drop rows w/ duplicated index
         return combined
 
-    def _repair_candles(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _repair_candles(self, data: pd.DataFrame, freq: str) -> pd.DataFrame:
         """ Fill in missing values for candle data via interpolation. """
+        assert freq in self.valid_freqs
+
         buffer = pd.DataFrame(data, copy=True, dtype=float)
 
         start = data.iloc[0].name
         end = data.iloc[-1].name
-        attrs = data.attrs
-        _freq = self.translate_period(attrs['freq'])
+        _freq = self.translate_period(freq)
 
         # drop invalid rows
-        index = data.index
+        # drop duplicated rows w/ 0 in columns
         # data.drop(data.loc[data['volume'] == 0], inplace=True)        # drop rows w/ 0 volume
-        buffer.drop_duplicates(keep="first", inplace=True)
-        buffer.drop(index=index[index.duplicated()], inplace=True)
+        buffer = buffer[~buffer.index.duplicated(keep="first")]         # drop rows w/ duplicated index
 
         index = pd.date_range(start=start, end=end, freq=_freq, tz=data.index.tz)
-        buffer.attrs = attrs
 
         buffer = buffer.reindex(index)
         buffer.interpolate(inplace=True)
@@ -197,3 +255,11 @@ class MarketAPI(Market, ABC):
         assert buffer.index.is_monotonic_increasing
 
         return buffer
+
+    def fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+        """ Fetch and clean candle data """
+        print(f"Fetching candle data for {freq}...")
+        data = self._fetch_candles(freq)
+        data = self._repair_candles(data, freq)
+
+        return data

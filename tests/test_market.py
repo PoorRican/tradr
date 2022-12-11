@@ -11,7 +11,7 @@ from core.market import Market
 class BaseMarketTests(unittest.TestCase):
     @patch('core.market.Market.__abstractmethods__', set())
     def setUp(self):
-        self.dir = path.join(getcwd(), 'data')
+        self.dir = path.join(getcwd(), '_data')
         self.market = Market(root=self.dir)
 
         # clear directory
@@ -33,7 +33,7 @@ class MarketSaveLoadTests(BaseMarketTests):
         self.market.save()
 
         _dir = self.market._instance_dir
-        dirs = ('literals.yml', 'data.yml', f"{_attr_name}.yml",)
+        dirs = ('literals.yml', '_data.yml', f"{_attr_name}.yml",)
         _files = listdir(self.market._instance_dir)
         for i in _files:
             self.assertIn(i, dirs)

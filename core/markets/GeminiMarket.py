@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Union, Optional, Dict
+from typing import Union, Optional, Tuple
 import pandas as pd
 import requests
 import logging
@@ -55,11 +55,6 @@ class GeminiMarket(MarketAPI):
     _SECRET_FN = "gemini_api.yml"
     _INSTANCES_FN = "gemini_instances.yml"
 
-    def __init__(self, api_key: str = None, api_secret: str = None,
-                 freq: str = '15m', symbol: str = 'btcusd',
-                 root: str = DATA_ROOT, update=True, ):
-        super().__init__(api_key=api_key, api_secret=api_secret, freq=freq, root=root, update=update, symbol=symbol)
-
     def get_fee(self) -> float:
         """ Retrieve current transaction fee.
 
@@ -84,15 +79,15 @@ class GeminiMarket(MarketAPI):
 
         """
         endpoint = '/v1/notionalvolume'     # noqa
-        response = self.post(endpoint)
+        response = self._post(endpoint)
         try:
             return response['api_taker_fee_bps'] / 100
         except KeyError:
             logging.warning("`MarketAPI.calc_fee` has no value for `fee`")
             return 0.35
 
-    def get_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
-        """ Retrieve candle data.
+    def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+        """ Low-level function to retrieve candle data.
 
         Ticker frequency is determined by `self.freq` and notated on return type via the `DataFrame.attrs` convention.
         This metadata can be referenced later by the qualitative infrastructure.
@@ -118,24 +113,20 @@ class GeminiMarket(MarketAPI):
             Ticker data translated to `DataFrame` time-series.
 
         """
-        if not freq:
-            freq = self.freq
         assert freq in self.valid_freqs
 
         response = requests.get(self.BASE_URL + f"/v2/candles/{self.symbol}/{freq}")
-        btc_candle_data = response.json()
-        data = json_to_df(btc_candle_data)
+        raw_candle_data = response.json()
+        data = json_to_df(raw_candle_data)
 
         # reverse so data is ascending (oldest to most recent)
-        # TODO: check that GeminiAPI has correct order of data in unittests
         data = data.iloc[::-1]
         assert data.iloc[0].name < data.iloc[-1].name
 
         # set flag/metadata on `DataFrame`
+        # TODO: use pandas' built-in `freq` value for index
         data.attrs['freq'] = freq
         data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
-
-        data = self._repair_candles(data)
 
         return data
 
@@ -164,7 +155,7 @@ class GeminiMarket(MarketAPI):
         response = requests.get(self.BASE_URL + f"/v1/book/{self.symbol}")
         return response.json()
 
-    def post(self, endpoint: str, data: dict = None) -> dict:
+    def _post(self, endpoint: str, data: dict = None) -> dict:
         """ Access private API endpoints.
 
         Handles payload encapsulation in accordance with API docs.
@@ -196,7 +187,7 @@ class GeminiMarket(MarketAPI):
 
         return response.json()
 
-    def _convert(self, response: dict, trade: Trade) -> 'SuccessfulTrade':
+    def _translate(self, response: dict, trade: Trade) -> 'SuccessfulTrade':
         """ Translate exchange response into `SuccessfulTrade`.
 
         Notes:
@@ -221,7 +212,7 @@ class GeminiMarket(MarketAPI):
         _id = response['order_id']
         return SuccessfulTrade(amount, rate, trade.side, id=_id)
 
-    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
+    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
         """ Places an order - specifically a Fill-or-Kill Limit Order.
 
         Notes:
@@ -250,9 +241,9 @@ class GeminiMarket(MarketAPI):
             'options': ["fill-or-kill"]
         }
 
-        response = self.post("/v1/order/new", data)
+        response = self._post("/v1/order/new", data)
         if not response['is_cancelled']:  # order was fulfilled
-            return self._convert(response, trade)
+            return self._translate(response, trade)
         else:
             return False
 

@@ -43,7 +43,7 @@ class Backtesting(object):
 
     def _progress(self, current: int):
         """ Show percentage complete as an integer """
-        total = len(self.market.data)
+        total = len(self.strategy.candles)
         return (100 * current) // total
 
     def process_timeframes(self, start: Union[pd.Timestamp, str] = None, end: Union[pd.Timestamp, str] = None):
@@ -55,23 +55,22 @@ class Backtesting(object):
             end: timestamp or date. If `None`, go to end of ticker data.
         """
         if start is None:
-            start = self.market.data.iloc[0].name
+            start = self.strategy.candles.iloc[0].name
         if end is None:
-            end = self.market.data.iloc[-1].name
+            end = self.strategy.candles.iloc[-1].name
 
         msg = "Starting simulation"
         logging.info(msg)
         print(msg)
 
-        freq = self.market.data.attrs['freq']
-        freq = self.market.translate_period(freq)
+        freq = self.market.translate_period(self.strategy.freq)
 
-        msg = "Compute data"
+        msg = "Pre-processing data"
         logging.info(msg)
         print(msg)
         self.strategy.calculate_all()
 
-        msg = "Beginning to process data"
+        msg = "Beginning to process decision data"
         logging.info(msg)
         print(msg)
         frames = pd.date_range(start, end, freq=freq, tz='US/Pacific')
@@ -93,11 +92,11 @@ class Backtesting(object):
             end: date or timestamp to end plot
         """
         if start is None:
-            start = self.market.data.iloc[0].name
+            start = self.strategy.candles.iloc[0].name
         if end is None:
-            end = self.market.data.iloc[-1].name
+            end = self.strategy.candles.iloc[-1].name
 
-        self.market.data.loc[start:end]['close'].plot(color='blue')
+        self.strategy.candles.loc[start:end]['close'].plot(color='blue')
 
         orders = self.strategy.orders.loc[start:end]
         buys = orders[orders['side'] == 'buy']

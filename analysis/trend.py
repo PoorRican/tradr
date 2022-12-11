@@ -2,10 +2,10 @@ import concurrent.futures
 from math import floor
 import pandas as pd
 from pytz import timezone
-from typing import Mapping, Optional, NoReturn, Sequence
+from typing import Mapping, Optional, NoReturn
 
 from core.MarketAPI import MarketAPI
-from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow, Signal
+from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow
 from models.trend import TrendMovement, MarketTrend
 
 
@@ -38,19 +38,6 @@ class TrendDetector(object):
 
         self.market = market
 
-        self._candles: pd.DataFrame = pd.DataFrame()
-        """ 3-dim DataFrame of candle data incorporating multiple timeframes
-        
-        This should be updated by `update()`.
-        
-        Index timestamp. Columns frequencies. 3rd dim should be market value corresponding to index.
-        
-        Candles should be a multi-indexed `DataFrame` where primary index is the frequency (eg: 1h, 1d, etc).
-        
-        Interpolation (handled by pandas) can be used to account for missing timestamps when plotting longer timeframes.
-        Normally, missing data shall be dropped before being passed.
-        """
-
         self._indicators: Mapping[str, 'IndicatorContainer'] = self._create_indicator_container()
         """ Store indicator data as a mapping where each key is a frequency.
         """
@@ -70,7 +57,7 @@ class TrendDetector(object):
         assert frequency in self._frequencies
 
         # fetch via multi-index
-        return self._candles.loc[frequency]
+        return self.market.candles(frequency)
 
     def develop(self) -> NoReturn:
         """ Compute all indicator functions across all frequencies using existing candle data.
@@ -82,7 +69,6 @@ class TrendDetector(object):
             - Asynchronous
             - Threading
         """
-        assert len(self._candles) != 0
         assert len(self._indicators) != 0
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
@@ -90,23 +76,6 @@ class TrendDetector(object):
             [fs.extend(executor.submit(container.develop,
                                        self.candles(freq)).result()) for freq, container in self._indicators.items()]
             concurrent.futures.wait(fs)
-
-    def _fetch(self) -> pd.DataFrame:
-        """ Get all candle data then combine into multi-indexed `DataFrame`.
-
-        TODO:
-            - Use `pd.infer_freq`. Fill in missing gaps to create uniform dataframe
-        """
-        data = []
-
-        # get candle data for all frequencies
-        for freq in self._frequencies:
-            fetched = pd.DataFrame(self.market.get_candles(freq), copy=True)
-            data.append(fetched)
-
-        combined = pd.concat(data, keys=self._frequencies)
-
-        return combined
 
     def _process_point(self, point: pd.Timestamp, freq: str) -> pd.Timestamp:
         # modify `point` to access correct timeframe
@@ -152,10 +121,6 @@ class TrendDetector(object):
         signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         return TrendMovement(signals.mode()[0])
 
-    def update_candles(self) -> NoReturn:
-        """ Update `candles` with current market data """
-        self._candles = self._fetch()
-
     def _determine_scalar(self, executor, point: Optional[pd.Timestamp] = None) -> int:
         fs = []
         [fs.extend(future) for future in [
@@ -184,7 +149,7 @@ class TrendDetector(object):
             -   introduce `strength` binary flag to return values based on most extreme scalar (`abs` of `strength()`)
         """
         if not point:
-            point = self._candles.iloc[-1].name
+            point = self.market.most_recent_timestamp
 
         # remove `freq` value to prevent `KeyError`
         # TODO: is reusing the name going to affect original `point`?

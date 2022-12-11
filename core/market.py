@@ -1,15 +1,19 @@
 from abc import abstractmethod, ABC
+from models.data import timestamp_representer, timestamp_constructor, TIMESTAMP_REPR_STR
 import numpy as np
 from os import path, mkdir
 from typing import Tuple, List
 from warnings import warn
-from yaml import safe_dump, safe_load
+import yaml
 
 import pandas as pd
 
 
 _FN_EXT = ".yml"
 _LITERALS_FN = f"literals{_FN_EXT}"
+
+yaml.add_representer(pd.Timestamp, timestamp_representer)
+yaml.add_constructor(TIMESTAMP_REPR_STR, timestamp_constructor)
 
 
 class Market(ABC):
@@ -27,17 +31,15 @@ class Market(ABC):
     asset_pairs: Tuple[str, ...]
     columns = ('open', 'high', 'low', 'close', 'volume')
 
-    def __init__(self, symbol: str = None, freq: str = None, root: str = None):
+    def __init__(self, symbol: str = None, root: str = None):
         """
         Args:
-            freq:
-                candle frequency
             root:
                 root directory to store candle data
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
-        self.data = pd.DataFrame(columns=list(self.columns))
+        self._data = pd.DataFrame(columns=list(self.columns))
         """DataFrame: container for candle data.
         
         Container gets populated by `get_candles` and should otherwise be read-only.
@@ -45,26 +47,31 @@ class Market(ABC):
         Notes:
             Should have `source` and `freq` set via the `DataFrame.attrs` convention.
         """
-        if symbol and hasattr(self, 'asset_pairs'):
-            assert symbol in self.asset_pairs
-        if freq and hasattr(self, 'valid_freqs'):
-            assert freq in self.valid_freqs
 
+        if symbol:
+            assert symbol in self.asset_pairs
         self.symbol = symbol
-        self.freq = freq
 
         self.root = root
 
     @property
     def id(self) -> str:
-        return f"{self.__name__}_{self.symbol}_{self.freq}"
+        return f"{self.__name__}_{self.symbol}"
+
+    @property
+    def most_recent_timestamp(self) -> pd.Timestamp:
+        return self._data.iloc[-1].name
+
+    @abstractmethod
+    def candles(self, freq: str) -> pd.DataFrame:
+        pass
 
     @abstractmethod
     def update(self):
         """ Update ticker data """
         pass
 
-    def load(self, ignore: bool = True):
+    def load(self):
         """ Load stored attributes and sequence data from instance directory onto memory.
 
         Notes
@@ -73,10 +80,16 @@ class Market(ABC):
         # TODO: load linked/stored indicator and market data/parameters
 
         _dir = self._instance_dir
+        _literals_fn = path.join(_dir, _LITERALS_FN)
+        if not path.exists(_dir):
+            mkdir(_dir)
+            return None
+        elif not path.exists(_literals_fn):
+            return None
 
         # load `_literals`. Literals should be verified (ie: not be a function)
-        with open(path.join(_dir, _LITERALS_FN), 'r') as f:
-            _literals: dict = safe_load(f)
+        with open(_literals_fn, 'r') as f:
+            _literals: dict = yaml.safe_load(f)
             for k, v in _literals.items():
                 # verify data
                 assert k in self.__dict__.keys()
@@ -88,16 +101,19 @@ class Market(ABC):
             _t = type(v)
             if _t not in (pd.DataFrame, pd.Series):
                 continue
-            with open(path.join(_dir, f"{k}.yml"), 'r') as f:
-                container = safe_load(f)
-                if _t == pd.DataFrame:
-                    _seq = pd.DataFrame.from_records(container)
-                elif _t == pd.Series:
-                    _seq = pd.Series(container)
-                else:
-                    warn('non-pandas object passed through check...')
-                    continue
-                setattr(self, k, _seq)
+            try:
+                with open(path.join(_dir, f"{k}.yml"), 'r') as f:
+                    container = yaml.safe_load(f)
+                    if _t == pd.DataFrame:
+                        _seq = pd.DataFrame.from_dict(container)
+                    elif _t == pd.Series:
+                        _seq = pd.Series(container)
+                    else:
+                        warn('non-pandas object passed through check...')
+                        continue
+                    setattr(self, k, _seq)
+            except FileNotFoundError:
+                continue
 
             # TODO: verify data checksum
 
@@ -126,16 +142,16 @@ class Market(ABC):
 
         # store literal parameters
         with open(path.join(_dir, _LITERALS_FN), 'w') as f:
-            safe_dump(_literals, f)
+            yaml.safe_dump(_literals, f)
 
         # store sequence data
         for attr in _df_keys:
             with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
-                safe_dump(getattr(self, attr).to_dict(orient='records'), f)
+                yaml.safe_dump(getattr(self, attr).to_dict(orient='index'), f)
 
         for attr in _sequence_keys:
             with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
-                safe_dump(getattr(self, attr).to_list(), f)
+                yaml.safe_dump(getattr(self, attr).to_list(), f)
 
     @property
     def _instance_dir(self) -> str:

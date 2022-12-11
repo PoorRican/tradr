@@ -61,7 +61,7 @@ class TrendDetectorTests(unittest.TestCase):
     def test_fetch(self):
         # mock get_candles
         _candles = pd.DataFrame({'c': [1, 'test'], 'd': [3, 4]})
-        self.detector.market.get_candles = MagicMock(return_value=_candles)
+        self.detector.market.fetch_candles = MagicMock(return_value=_candles)
 
         fetched = self.detector._fetch()
 
