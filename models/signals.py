@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 import concurrent.futures
 from enum import IntEnum
-from math import fabs, ceil, isnan, floor
+from math import fabs, ceil, isnan
 import matplotlib.pyplot as plt
+import numpy as np
 from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple, Union
 import pandas as pd
 from talib import BBANDS, STOCHRSI, MACD
@@ -127,7 +128,10 @@ class Indicator(ABC):
         """ Return `Signal` from `point`.
 
         First, `computed` is checked to see if a value has been calculated. If not, decision is calculated
-        from `graph`.
+        from `graph`, added to `computed`, then returned.
+
+        A look-back has been implemented which checks the previous row, to see both signals are equal. This is to
+        prevent both false-positives and add a delay to "catch" optimal price movements.
 
         Args:
             point:
@@ -141,16 +145,26 @@ class Indicator(ABC):
         if point in self.computed.index:
             signal = self.computed.loc[point, 'signal']
             if not isnan(signal):
-                return Signal(int(signal))
+                signal = int(signal)
+                last = self.computed.index.get_loc(point)
+                if isinstance(last, slice):
+                    last = last.start
+                last -= 1
+                if last > 0:
+                    last_point = self.computed.index[last]
+                    last_signal = int(self.computed.loc[last_point, 'signal'])
+                    if signal == last_signal:
+                        return Signal(signal)
+                else:
+                    return Signal(int(signal))
+            return Signal.HOLD
 
         assert len(self.graph)
 
-        try:
-            row = self.graph.loc[point]
-        except KeyError:
-            raise KeyError
-
-        return self._row_decision(row, candles)
+        row = self.graph.loc[point]
+        decision = self._row_decision(row, candles)
+        self.computed.loc[point, 'signal'] = decision
+        return decision
 
     def strength(self, point: pd.Timestamp, candles: pd.DataFrame) -> float:
         """ Return strength from `point`.
