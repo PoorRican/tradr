@@ -46,7 +46,7 @@ class TrendDetector(object):
     def _create_indicator_container(cls) -> Mapping[str, 'IndicatorContainer']:
         indicators = {}
         for freq in cls._frequencies:
-            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow])
+            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow], lookback=1)
         return indicators
 
     def candles(self, frequency: str) -> pd.DataFrame:

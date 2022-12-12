@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import concurrent.futures
 from enum import IntEnum
-from math import fabs, ceil, isnan
+from math import fabs, ceil, isnan, floor
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Optional, Tuple, Union
@@ -59,7 +59,9 @@ class Indicator(ABC):
 
     columns = ClassVar[Tuple[str, ...]]
 
-    def __init__(self, index: pd.Index = None):
+    def __init__(self, index: pd.Index = None, lookback: int = 0):
+        self._lookback = lookback
+
         self.graph = self.container(index)
         self.computed = self.container(index, columns=('signal', 'strength'))
 
@@ -146,17 +148,26 @@ class Indicator(ABC):
             signal = self.computed.loc[point, 'signal']
             if not isnan(signal):
                 signal = int(signal)
-                last = self.computed.index.get_loc(point)
-                if isinstance(last, slice):
-                    last = last.start
-                last -= 1
-                if last > 0:
-                    last_point = self.computed.index[last]
-                    last_signal = int(self.computed.loc[last_point, 'signal'])
-                    if signal == last_signal:
-                        return Signal(signal)
+                idx: Union[int, slice] = self.computed.index.get_loc(point)
+                if isinstance(idx, slice):
+                    start = idx.start
+                    stop = idx.stop
                 else:
-                    return Signal(int(signal))
+                    start = idx
+                    stop = idx + 1
+
+                if start > 0:
+                    lookback = self._lookback
+                    if start < self._lookback:
+                        lookback = idx
+                    prev_points = slice(start - lookback, stop)
+                    prev = self.computed[prev_points]
+                    prev = prev['signal']
+                    avg = int(prev.mean())
+                    if floor(abs(avg)):
+                        return Signal(avg)
+                else:
+                    return Signal(signal)
             return Signal.HOLD
 
         assert len(self.graph)
@@ -365,8 +376,8 @@ class IndicatorContainer(object):
     Primary purpose is to wrap multiple `Indicator` instances and connect them with market data.
 
     This can be used in `Strategy` to direct trade decisions, or can be used to indicate trends."""
-    def __init__(self, indicators: Sequence[type(Indicator)], index: Optional[pd.Index] = None):
-        self.indicators = [i(index) for i in indicators]
+    def __init__(self, indicators: Sequence[type(Indicator)], index: Optional[pd.Index] = None, lookback: int = 0):
+        self.indicators = [i(index, lookback) for i in indicators]
 
     def develop_threads(self, executor, candles: pd.DataFrame) -> Sequence['concurrent.futures.Future']:
         fs = [executor.submit(indicator.process, candles) for indicator in self.indicators]

@@ -22,7 +22,7 @@ class OscillatingStrategy(FinancialsMixin, ABC):
         super().__init__(**kwargs)
 
         self.timeout: str = timeout
-        self.indicators: IndicatorContainer = IndicatorContainer(indicators)
+        self.indicators: IndicatorContainer = IndicatorContainer(indicators, lookback=1)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.
