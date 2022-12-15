@@ -338,10 +338,10 @@ class STOCHRSIRow(Indicator):
         self._oversold = oversold
 
     def oversold(self, d: float, k: float) -> bool:
-        return self._oversold < d < k
+        return self._oversold < d <= k
 
     def overbought(self, d: float, k: float) -> bool:
-        return self._overbought > d > k
+        return self._overbought > d >= k
 
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
         fastk = row['fastk']
@@ -365,7 +365,7 @@ class STOCHRSIRow(Indicator):
 
         val = fabs(k - d)
 
-        if isnan(val) or not self.overbought(d, k) or not self.oversold(d, k):
+        if isnan(val) or (not self.overbought(d, k) and not self.oversold(d, k)):
             return 0
         return ceil(val / 5)
 
