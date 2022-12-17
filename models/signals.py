@@ -80,7 +80,9 @@ class Indicator(ABC):
         return pd.DataFrame(index=index, columns=list(columns), dtype=float)
 
     def process(self, data: pd.DataFrame, **kwargs) -> NoReturn:
-        """
+        """ Prepares internal `computed` and incoming data.
+
+        In the future, data will be atomically updated with incoming data
 
         Args:
             data:
@@ -93,13 +95,16 @@ class Indicator(ABC):
         # TODO: make async
 
         # new or empty rows get updated
-        # TODO: raise an error if there is a gap
         _index = list(data.index.values)
         _index.extend(list(self.graph.values))
         if type(data.index) == pd.DatetimeIndex:
             _index = pd.DatetimeIndex(_index)
         else:
             _index = pd.Index(_index)
+
+        if len(_index.notna()) != len(_index):
+            raise ValueError('Resulting index contains a date-gap')
+
         _not_empty = self.graph.notna()
         updates = _not_empty.index.isin(_index)
 
@@ -407,11 +412,12 @@ class IndicatorContainer(object):
         else:
             _buffer = data.iloc[_buffer_len - 1:]
 
-        if executor is not None:
-            self.develop_threads(executor, _buffer)
-            return None
+        if self.threads:
 
-        elif self.threads:
+            if executor is not None:
+                self.develop_threads(executor, _buffer)
+                return None
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
                 # Start the load operations and mark each future with its URL
                 fs = self.develop_threads(executor, _buffer)
@@ -469,13 +475,14 @@ class IndicatorContainer(object):
         """
         # TODO: check that market data is not too ahead of computed indicators
 
-        # add to `executor` if passed
-        if executor is not None:
-            self.signal_threads(executor, point, data)
-            return None
-
         # initialize executor or run on single thread
-        elif self.threads > 0:
+        if self.threads:
+
+            # add to `executor` if not passed
+            if executor is not None:
+                self.signal_threads(executor, point, data)
+                return None
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
                 fs = self.signal_threads(executor, point, data)
                 signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
@@ -497,13 +504,14 @@ class IndicatorContainer(object):
                  executor: concurrent.futures.Executor = None) -> Union[float, None]:
         # TODO: ensure that market data is not too ahead of computed indicators
 
-        # add to `executor` if passed
-        if executor is not None:
-            self.signal_threads(executor, point, data)
-            return None
-
         # initialize executor or run on single thread
-        elif self.threads > 0:
+        if self.threads:
+
+            # add to `executor` if not passed
+            if executor is not None:
+                self.strength_threads(executor, point, data)
+                return None
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                 fs = [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
                 # TODO: use dynamic number of array length
