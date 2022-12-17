@@ -10,7 +10,8 @@ from models.trades import Side
 
 
 class OscillatingStrategy(FinancialsMixin, ABC):
-    def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h', **kwargs):
+    def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h',
+                 threads: int = 4, **kwargs):
         """
         Args:
             indicators:

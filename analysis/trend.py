@@ -33,20 +33,20 @@ class TrendDetector(object):
     Shall be ordered from shortest-to-longest.
     """
 
-    def __init__(self, market: MarketAPI):
-        super().__init__()
+    def __init__(self, market: MarketAPI, threads: int = 0, **kwargs):
+        super().__init__(**kwargs)
 
         self.market = market
+        self.threads = threads
 
         self._indicators: Mapping[str, 'IndicatorContainer'] = self._create_indicator_container()
         """ Store indicator data as a mapping where each key is a frequency.
         """
 
-    @classmethod
-    def _create_indicator_container(cls) -> Mapping[str, 'IndicatorContainer']:
+    def _create_indicator_container(self) -> Mapping[str, 'IndicatorContainer']:
         indicators = {}
-        for freq in cls._frequencies:
-            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow], lookback=1)
+        for freq in self._frequencies:
+            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow], lookback=1, threads=self.threads)
         return indicators
 
     def candles(self, frequency: str) -> pd.DataFrame:
@@ -71,36 +71,41 @@ class TrendDetector(object):
         """
         assert len(self._indicators) != 0
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-            fs = []
-            [fs.extend(executor.submit(container.develop,
-                                       self.candles(freq)).result()) for freq, container in self._indicators.items()]
-            concurrent.futures.wait(fs)
+        if self.threads:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+                fs = []
+                [fs.extend(executor.submit(container.develop,
+                                           self.candles(freq)
+                                           ).result()) for freq, container in self._indicators.items()]
+                concurrent.futures.wait(fs)
+        else:
+            [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
 
     def _process_point(self, point: pd.Timestamp, freq: str) -> pd.Timestamp:
         # modify `point` to access correct timeframe
         _freq = self.market.translate_period(freq)      # `DateOffset` conversion
         if _freq == '6H':
-            point = point.floor(_freq)
-            if point.dst():
-                point -= pd.DateOffset(hours=3)
+            _point = point.floor(_freq)
+            if _point.dst():
+                _point -= pd.DateOffset(hours=3)
             else:
-                point -= pd.DateOffset(hours=4)
-            point = point.floor('H', nonexistent='shift_backward')
+                _point -= pd.DateOffset(hours=4)
+            _point = _point.floor('H', nonexistent='shift_backward')
         elif _freq == '1D':
             # TODO: faulty implementation
             # Incorrect date is indexed immediately after daily candle data is released.
-            point = point.floor(_freq) - pd.DateOffset(days=1)
-            point = point.strftime('%m/%d/%Y')          # generically select data
+            _point = point.floor(_freq) - pd.DateOffset(days=1)
+            _point = point.strftime('%m/%d/%Y')          # generically select data
         else:
-            point = point.floor(_freq, nonexistent='shift_backward')
-        return point
+            _point = point.floor(_freq, nonexistent='shift_backward')
+        return _point
 
-    def _fetch_trends(self, executor, point: pd.Timestamp = None) -> TrendMovement:
+    def _fetch_trends(self, point: pd.Timestamp = None, executor = None) -> TrendMovement:
         """
 
         Args:
             point:
+            executor:
 
         Notes:
             Frequency needs to be modified before accessing indicator graphs. A pandas unit of frequency to select
@@ -113,21 +118,35 @@ class TrendDetector(object):
         Returns:
 
         """
-        fs = []
-        [fs.extend(future) for future in [
-            container.signal_threads(executor, self._process_point(point, freq),
-                                     self.candles(freq)
-                                     ) for freq, container in self._indicators.items()]]
-        signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+        if self.threads:
+            fs = []
+            [fs.extend(future) for future in [
+                container.signal_threads(executor, self._process_point(point, freq),
+                                         self.candles(freq)
+                                         ) for freq, container in self._indicators.items()]]
+            signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+        else:
+            values = [container.signal(self.candles(freq),
+                                       self._process_point(point, freq),
+                                       ) for freq, container in self._indicators.items()]
+            signals = pd.Series(values)
+
         return TrendMovement(signals.mode()[0])
 
-    def _determine_scalar(self, executor, point: Optional[pd.Timestamp] = None) -> int:
-        fs = []
-        [fs.extend(future) for future in [
-            container.strength_threads(executor, self._process_point(point, freq),
-                                       self.candles(freq)
-                                       ) for freq, container in self._indicators.items()]]
-        results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+    def _determine_scalar(self, point: Optional[pd.Timestamp] = None, executor = None) -> int:
+        if self.threads:
+            fs = []
+            [fs.extend(future) for future in [
+                container.strength_threads(executor, self._process_point(point, freq),
+                                           self.candles(freq)
+                                           ) for freq, container in self._indicators.items()]]
+            results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+        else:
+            values = [container.strength(self.candles(freq),
+                                         self._process_point(point, freq),
+                                         ) for freq, container in self._indicators.items()]
+            results = pd.Series(values)
+
         # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
         # TODO: only incorporate `strength()` from outputs from consensus
         return int(floor(results.mean())) or 1
@@ -156,12 +175,19 @@ class TrendDetector(object):
         if hasattr(point, 'timestamp'):
             point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-            _signals = executor.submit(self._fetch_trends, executor, point)
-            _strengths = executor.submit(self._determine_scalar, executor, point)
+        if self.threads:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+                _signals = executor.submit(self._fetch_trends, point, executor)
+                _strengths = executor.submit(self._determine_scalar, point, executor)
 
-            concurrent.futures.wait([_signals, _strengths])
-            return MarketTrend(_signals.result(), scalar=_strengths.result())
+                concurrent.futures.wait([_signals, _strengths])
+                signal = _signals.result()
+                scalar = _strengths.result()
+        else:
+            signal = self._fetch_trends(point)
+            scalar = self._determine_scalar(point)
+
+        return MarketTrend(signal, scalar=scalar)
 
     def calculate_all(self):
         for freq, container in self._indicators.items():
