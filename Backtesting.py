@@ -73,11 +73,11 @@ class Backtesting(object):
         msg = "Beginning to process decision data"
         logging.info(msg)
         print(msg)
-        frames = pd.date_range(start, end, freq=freq, tz='US/Pacific')
-        for i, frame in enumerate(frames):
+        points = pd.date_range(start, end, freq=freq, tz='US/Pacific')
+        for i, point in enumerate(points):
             # TODO: enable multithreading
             self.print_progress(i)
-            self.strategy.process(frame)
+            self.strategy.process(point)
 
         msg = "Finished processing data"
         logging.info(msg)
