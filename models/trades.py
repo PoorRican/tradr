@@ -7,16 +7,10 @@ Notes:
 """
 
 from dataclasses import dataclass, field, fields
-from enum import IntEnum, unique
 import pandas as pd
 from typing import Union, Any
 
-
-@unique
-class Side(IntEnum):
-    """ Enumerates order types as buy/sell """
-    BUY = 1
-    SELL = -1
+from primitives import Side
 
 
 @dataclass

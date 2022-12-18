@@ -7,7 +7,8 @@ from typing import NoReturn, Tuple, Union
 from warnings import warn
 
 from strategies.strategy import Strategy
-from models.trades import Side, SuccessfulTrade
+from models import SuccessfulTrade
+from primitives import Side
 
 
 class FinancialsMixin(Strategy, ABC):

@@ -8,8 +8,9 @@ from unittest.mock import patch, MagicMock, create_autospec
 from yaml import safe_load, safe_dump
 
 from core.market import Market
-from models.trades import SuccessfulTrade, Trade, Side
-from strategies.strategy import Strategy, DATA_ROOT
+from models import SuccessfulTrade, Trade
+from primitives import Side
+from strategies.strategy import Strategy
 
 
 class BaseStrategyTestCase(unittest.TestCase):

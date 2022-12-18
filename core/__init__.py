@@ -5,3 +5,6 @@ functionality and exchange functionality will be separated. This is because for 
 market trends, multiple sources of ticker data might be referred to, but trades will be executed only one single
 exchange.
 """
+from core.market import Market
+from core.MarketAPI import MarketAPI
+from core.markets import SimulatedMarket, GeminiMarket

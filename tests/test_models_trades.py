@@ -4,7 +4,8 @@ from math import floor
 
 import pandas as pd
 
-from models.trades import Trade, SuccessfulTrade, add_to_df, Side
+from models import Trade, SuccessfulTrade, add_to_df
+from primitives import Side
 
 
 class TestTrade(unittest.TestCase):

@@ -4,10 +4,9 @@ import pandas as pd
 from typing import Sequence, Union
 
 from analysis.trend import TrendDetector
-from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
-from models.trades import Side
-from models.trend import TrendMovement
+from models.indicators import *
 from strategies.OscillatingStrategy import OscillatingStrategy
+from primitives import Side, TrendMovement
 
 
 class ThreeProngAlt(OscillatingStrategy):

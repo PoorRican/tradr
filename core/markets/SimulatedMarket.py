@@ -2,7 +2,7 @@ from typing import Union
 
 from core.market import Market
 from core.MarketAPI import MarketAPI
-from models.trades import Trade, SuccessfulTrade
+from models import Trade, SuccessfulTrade
 
 
 class SimulatedMarket(Market):

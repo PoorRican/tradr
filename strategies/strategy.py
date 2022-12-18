@@ -1,5 +1,5 @@
 import pandas as pd
-from os import path, listdir, mkdir
+from os import path, mkdir
 from datetime import datetime
 import numpy as np
 from typing import Tuple, Union, List, Dict
@@ -8,9 +8,9 @@ import logging
 from yaml import safe_dump, safe_load
 from warnings import warn
 
-from models.trades import Trade, SuccessfulTrade, add_to_df, truncate, Side
 from core.MarketAPI import MarketAPI
-from models.data import DATA_ROOT
+from models import DATA_ROOT, Trade, SuccessfulTrade, add_to_df, truncate
+from primitives import Side
 
 
 _FN_EXT = ".yml"

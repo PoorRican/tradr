@@ -1,5 +1,5 @@
 from abc import abstractmethod, ABC
-from models.data import timestamp_representer, timestamp_constructor, TIMESTAMP_REPR_STR
+from models import timestamp_representer, timestamp_constructor, TIMESTAMP_REPR_STR
 import numpy as np
 from os import path, mkdir
 from typing import Tuple, List

@@ -3,7 +3,8 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from analysis.financials import FinancialsMixin
-from models.trades import SuccessfulTrade, Side
+from models import SuccessfulTrade
+from primitives import Side
 from strategies.strategy import Strategy
 
 

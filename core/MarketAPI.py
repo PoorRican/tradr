@@ -10,8 +10,7 @@ from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
-from models.data import DATA_ROOT, ROOT
-from models.trades import Trade, SuccessfulTrade
+from models import DATA_ROOT, ROOT, Trade, SuccessfulTrade
 
 
 class MarketAPI(Market, ABC):

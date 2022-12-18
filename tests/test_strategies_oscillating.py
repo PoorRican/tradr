@@ -5,8 +5,8 @@ from pytz import timezone
 
 from core.markets.GeminiMarket import GeminiMarket
 from core.markets.SimulatedMarket import SimulatedMarket
-from models.indicators import Signal, IndicatorContainer
-from models.trades import Side
+from models import IndicatorContainer
+from primitives import Signal, Side
 from strategies.OscillatingStrategy import OscillatingStrategy
 
 

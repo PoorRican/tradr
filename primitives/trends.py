@@ -16,3 +16,5 @@ class TrendMovement(IntEnum):
 class MarketTrend:
     trend: TrendMovement
     scalar: int = 1
+
+

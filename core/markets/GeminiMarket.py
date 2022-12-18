@@ -3,14 +3,13 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Union, Optional, Tuple
+from typing import Union, Optional
 import pandas as pd
 import requests
 import logging
 
-from models.data import json_to_df, DATA_ROOT
 from core.MarketAPI import MarketAPI
-from models.trades import Trade, SuccessfulTrade
+from models import json_to_df, Trade, SuccessfulTrade
 
 
 class GeminiMarket(MarketAPI):

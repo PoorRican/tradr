@@ -5,8 +5,8 @@ from pytz import timezone
 from typing import Union, Tuple, Sequence
 
 from analysis.financials import FinancialsMixin
-from models.indicators import Signal, IndicatorContainer, Indicator
-from models.trades import Side
+from models import Indicator, IndicatorContainer
+from primitives import Signal, Side
 
 
 class OscillatingStrategy(FinancialsMixin, ABC):

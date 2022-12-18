@@ -5,8 +5,9 @@ from pytz import timezone
 from typing import Mapping, Optional, NoReturn
 
 from core.MarketAPI import MarketAPI
-from models.indicators import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow
-from models.trend import TrendMovement, MarketTrend
+from models.indicators import *
+from models import IndicatorContainer
+from primitives import TrendMovement, MarketTrend
 
 
 class TrendDetector(object):
