@@ -73,7 +73,7 @@ class TrendDetector(object):
         assert len(self._indicators) != 0
 
         if self.threads:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
                 fs = []
                 [fs.extend(executor.submit(container.develop,
                                            self.candles(freq)
@@ -83,10 +83,20 @@ class TrendDetector(object):
             [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
 
     def _process_point(self, point: pd.Timestamp, freq: str) -> pd.Timestamp:
+        """ Quantize and shift timestamp `point` for parsing market specific data.
+
+        Used for indexing higher level frequencies
+
+        Args:
+            point:
+                timestamp to use to index `_indicators`
+            freq:
+                Unit of time to quantize to. Should be written
+        """
         # modify `point` to access correct timeframe
         _freq = self.market.translate_period(freq)      # `DateOffset` conversion
+        _point = point.floor(_freq, nonexistent='shift_backward')
         if _freq == '6H':
-            _point = point.floor(_freq)
             if _point.dst():
                 _point -= pd.DateOffset(hours=3)
             else:
@@ -95,13 +105,12 @@ class TrendDetector(object):
         elif _freq == '1D':
             # TODO: faulty implementation
             # Incorrect date is indexed immediately after daily candle data is released.
-            _point = point.floor(_freq) - pd.DateOffset(days=1)
+            _point -= pd.DateOffset(days=1)
             _point = point.strftime('%m/%d/%Y')          # generically select data
-        else:
-            _point = point.floor(_freq, nonexistent='shift_backward')
         return _point
 
-    def _fetch_trends(self, point: pd.Timestamp = None, executor = None) -> TrendMovement:
+    def _fetch_trends(self, point: pd.Timestamp = None,
+                      executor: concurrent.futures.Executor = None) -> TrendMovement:
         """
 
         Args:
@@ -122,9 +131,10 @@ class TrendDetector(object):
         if self.threads:
             fs = []
             [fs.extend(future) for future in [
-                container.signal_threads(executor, self._process_point(point, freq),
-                                         self.candles(freq)
-                                         ) for freq, container in self._indicators.items()]]
+                container.func_threads('signal', executor=executor,
+                                       point=self._process_point(point, freq),
+                                       candles=self.candles(freq)
+                                       ) for freq, container in self._indicators.items()]]
             signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         else:
             values = [container.signal(self.candles(freq),
@@ -134,13 +144,15 @@ class TrendDetector(object):
 
         return TrendMovement(signals.mode()[0])
 
-    def _determine_scalar(self, point: Optional[pd.Timestamp] = None, executor = None) -> int:
+    def _determine_scalar(self, point: Optional[pd.Timestamp] = None,
+                          executor: concurrent.futures.Executor = None) -> int:
         if self.threads:
             fs = []
             [fs.extend(future) for future in [
-                container.strength_threads(executor, self._process_point(point, freq),
-                                           self.candles(freq)
-                                           ) for freq, container in self._indicators.items()]]
+                container.func_threads('strength', executor=executor,
+                                       point=self._process_point(point, freq),
+                                       candles=self.candles(freq)
+                                       ) for freq, container in self._indicators.items()]]
             results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         else:
             values = [container.strength(self.candles(freq),
@@ -177,7 +189,7 @@ class TrendDetector(object):
             point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
 
         if self.threads:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
                 _signals = executor.submit(self._fetch_trends, point, executor)
                 _strengths = executor.submit(self._determine_scalar, point, executor)
 

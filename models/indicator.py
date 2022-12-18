@@ -6,6 +6,10 @@ import pandas as pd
 from primitives import Signal
 
 
+MAX_STRENGTH = 4
+""" Defines a cap for maximum scalar value returned by strength """
+
+
 class Indicator(ABC):
     """ Abstracts statistical functions and encapsulates logic to derive discrete values.
 
@@ -54,16 +58,18 @@ class Indicator(ABC):
         return pd.DataFrame(index=index, columns=list(columns), dtype=float)
 
     def process(self, data: pd.DataFrame, **kwargs) -> NoReturn:
-        """ Prepares internal `computed` and incoming data.
+        """ Processes incoming `data` and populates `graph`.
 
-        In the future, data will be atomically updated with incoming data
+        This function is used for computing indicator functions with existing or new data. In the future, data will be
+        atomically updated with incoming data.
 
         Args:
             data:
                 New candle data to process.
             **kwargs:
-
-        Returns:
+                Arbitrary keyword-arguments to pass to indicator function `_function()`. These arguments override the
+                class property `_parameters`. Overriding indicator arguments is used for tuning and optimizing signal or
+                trend detection on a per-instance basis.
 
         """
         # TODO: make async
@@ -80,7 +86,7 @@ class Indicator(ABC):
             raise ValueError('Resulting index contains a date-gap')
 
         _not_empty = self.graph.notna()
-        updates = _not_empty.index.isin(_index)
+        # updates = _not_empty.index.isin(_index)
 
         # setup and run indicator function
         params = self._parameters
@@ -97,7 +103,11 @@ class Indicator(ABC):
         assert len(self.graph)
 
         # TODO: vectorizing computation across columns should provide greater speed increase
+        # TODO: setting `raw` flag to true should increase speed according to docs, however,
+        #   DataFrame gets passed as ndarray, and it is not clear how it is converted to an `ndarray`
 
+        # NOTE: in order to debug `apply()`, place breakpoint at the nested function `f()` in `Apply.__init__()`.
+        # This can be found at "pandas/core/apply.py:139"
         self.computed['signal'] = self.graph.apply(self._row_decision, axis='columns', candles=candles)
         self.computed['strength'] = self.graph.apply(self._row_strength, axis='columns', candles=candles)
 
@@ -106,7 +116,7 @@ class Indicator(ABC):
         pass
 
     def signal(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
-        """ Return `Signal` from `point`.
+        """ Return computed `Signal` at `point`.
 
         First, `computed` is checked to see if a value has been calculated. If not, decision is calculated
         from `graph`, added to `computed`, then returned.
@@ -118,7 +128,7 @@ class Indicator(ABC):
             point:
                 Point in time to get `Signal` from.
             candles:
-                Available market candle data. Is needed for certain instances of `_row_decision()`.
+                Available market candle data. Is needed for certain implementations of `_row_decision()`.
 
         Returns:
             `Signal` derived from `_function` at the given `point`.
@@ -188,7 +198,3 @@ class Indicator(ABC):
     @abstractmethod
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
         pass
-
-
-
-

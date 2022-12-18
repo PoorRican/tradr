@@ -49,7 +49,6 @@ class IndicatorContainer(object):
 
             if executor is not None:
                 self.develop_threads(executor, _buffer)
-                return None
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
                 # Start the load operations and mark each future with its URL
@@ -76,12 +75,16 @@ class IndicatorContainer(object):
         plt.hist(index, self.computed.xs('strength', axis=1, level=1).mean(axis='columns'))
         plt.bar(index, self.computed.xs('signal', axis=1, level=1).mean(axis='columns'))
 
-    def signal_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
+    def func_threads(self, func: str, *args, executor: concurrent.futures.Executor = None, **kwargs) \
             -> Sequence[concurrent.futures.Future]:
-        """ Add function calls to `Indicator.signal()` to `executor`. """
-        return [executor.submit(indicator.signal, point, data) for indicator in self.indicators]
+        """ Add function calls to `executor`. """
+        if executor is None:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as _executor:
+                return self.func_threads(func, *args, executor=_executor, **kwargs)
 
-    def signal(self, data: pd.DataFrame, point: pd.Timestamp = None,
+        return [executor.submit(getattr(indicator, func), *args, **kwargs) for indicator in self.indicators]
+
+    def signal(self, candles: pd.DataFrame, point: pd.Timestamp = None,
                executor: concurrent.futures.Executor = None) -> Union['Signal', None]:
         """ Infer signals from indicators.
 
@@ -96,7 +99,7 @@ class IndicatorContainer(object):
             just using built-in resampling.
 
         Args:
-            data:
+            candles:
                 Market data. Passed for a reference for indicators to use.
             point:
                 Point in time. Used during backtesting. Defaults to last frame in `self.graph`
@@ -110,48 +113,35 @@ class IndicatorContainer(object):
 
         # initialize executor or run on single thread
         if self.threads:
-
-            # add to `executor` if not passed
-            if executor is not None:
-                self.signal_threads(executor, point, data)
-                return None
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
-                fs = self.signal_threads(executor, point, data)
-                signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+            fs = self.func_threads('signal', executor=executor,
+                                   point=point, candles=candles)
+            signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
 
         else:
-            signals = pd.Series([i.signal(point, data) for i in self.indicators])
+            signals = pd.Series([i.signal(point, candles) for i in self.indicators])
 
         if len(signals.unique()) == 1:
             return Signal(signals.mode()[0])
 
         return Signal.HOLD
 
-    def strength_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
+    def _strength_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
             -> Sequence[concurrent.futures.Future]:
         """ Add function calls to `Indicator.strength()` to `executor`. """
         return [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
 
-    def strength(self, data: pd.DataFrame, point: pd.Timestamp = None,
+    def strength(self, candles: pd.DataFrame, point: pd.Timestamp = None,
                  executor: concurrent.futures.Executor = None) -> Union[float, None]:
         # TODO: ensure that market data is not too ahead of computed indicators
 
         # initialize executor or run on single thread
         if self.threads:
-
-            # add to `executor` if not passed
-            if executor is not None:
-                self.strength_threads(executor, point, data)
-                return None
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                fs = [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
-                # TODO: use dynamic number of array length
-                strengths = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+            self.func_threads('strength', executor=executor,
+                              point=point, candles=candles)
+            return None
 
         else:
-            strengths = pd.Series([i.strength(point, data) for i in self.indicators])
+            strengths = pd.Series([i.strength(point, candles) for i in self.indicators])
 
         return strengths.mean()
 
