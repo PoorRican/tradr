@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from typing import Union
 import logging
 
+from core import TZ
 from strategies.OscillatingStrategy import OscillatingStrategy
 
 
@@ -73,7 +74,7 @@ class Backtesting(object):
         msg = "Beginning to process decision data"
         logging.info(msg)
         print(msg)
-        points = pd.date_range(start, end, freq=freq, tz='US/Pacific')
+        points = pd.date_range(start, end, freq=freq, tz=TZ)
         for i, point in enumerate(points):
             # TODO: enable multithreading
             self.print_progress(i)

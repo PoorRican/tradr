@@ -3,13 +3,13 @@ from abc import ABC, abstractmethod
 import logging
 import pandas as pd
 from os import path
-from pytz import timezone
 from typing import Dict, List, NoReturn, Union, Optional, Tuple
 import urllib3
 from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
+from core.misc import TZ
 from models import DATA_ROOT, ROOT, Trade, SuccessfulTrade
 
 
@@ -83,7 +83,7 @@ class MarketAPI(Market, ABC):
         Returns
             A list of frequencies that need to be updated.
         """
-        now = datetime.datetime.now(tz=timezone("US/Pacific"))
+        now = datetime.datetime.now(tz=TZ)
         stale = []
         for freq in self.valid_freqs:
             _stale = self._check_candle_age(freq, now)
@@ -109,7 +109,7 @@ class MarketAPI(Market, ABC):
             True if candle data is stale and needs to be updated. Otherwise, returns False.
         """
         if now is None:
-            now = datetime.datetime.now(tz=timezone("US/Pacific"))
+            now = datetime.datetime.now(tz=TZ)
         data = self.candles(frequency)
         last_point = data.iloc[-1].name
         delta: pd.Timedelta = now - last_point

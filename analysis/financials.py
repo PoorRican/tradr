@@ -6,9 +6,10 @@ import pandas as pd
 from typing import NoReturn, Tuple, Union
 from warnings import warn
 
-from strategies.strategy import Strategy
+from core import TZ
 from models import SuccessfulTrade
 from primitives import Side
+from strategies import Strategy
 
 
 class FinancialsMixin(Strategy, ABC):
@@ -65,9 +66,14 @@ class FinancialsMixin(Strategy, ABC):
         set accordingly dependant on asset price and supplied capital.
         """
 
+        # set starting date for timeseries containers
+        if len(self.candles):
+            start = self.candles.index[0]
+        else:
+            start = pd.Timestamp.now(tz=TZ)
+
         self._capital = pd.Series(dtype=float)
-        if capital != 0:
-            self._capital[pd.Timestamp.now()] = capital
+        self._capital[start] = capital
         """ Simple total of available capital to use in buying assets.
         
         This number is used to determine how much fiat currency will be used to purchase assets, and the cost of any buy
@@ -76,8 +82,7 @@ class FinancialsMixin(Strategy, ABC):
         to be reflected in sums of order costs.
         """
         self._assets = pd.Series(dtype=float)
-        if assets != 0:
-            self._assets[pd.Timestamp.now()] = assets
+        self._assets[start] = assets
         """ Simple total of available assets to use when selling assets.
         
         Available assets represents a ceiling for amount of asset that can be sold.
@@ -98,6 +103,18 @@ class FinancialsMixin(Strategy, ABC):
         """
         return self.order_count - len(self.incomplete)
 
+    def _timeseries_setter(self, value: Union[float, Tuple['pd.Timestamp', float]], attr: str):
+        assert hasattr(self, attr)
+
+        if hasattr(value, '__iter__'):
+            point, val = value
+
+        else:
+            val = value
+            point = pd.Timestamp.now(tz=TZ)
+
+        getattr(self, attr)[point] = val
+
     @property
     def capital(self) -> float:
         try:
@@ -107,10 +124,7 @@ class FinancialsMixin(Strategy, ABC):
 
     @capital.setter
     def capital(self, value: Union[float, Tuple['pd.Timestamp', float]]):
-        if hasattr(value, '__iter__'):
-            self._capital[value[0]] = value[1]
-        else:
-            self._capital[pd.Timestamp.now()] = value
+        self._timeseries_setter(value, '_capital')
 
     @property
     def assets(self) -> float:
@@ -121,10 +135,7 @@ class FinancialsMixin(Strategy, ABC):
 
     @assets.setter
     def assets(self, value: Union[float, Tuple['pd.Timestamp', float]]):
-        if hasattr(value, '__iter__'):
-            self._assets[value[0]] = value[1]
-        else:
-            self._assets[pd.Timestamp.now()] = value
+        self._timeseries_setter(value, '_assets')
 
     @property
     def starting(self) -> float:
@@ -164,7 +175,7 @@ class FinancialsMixin(Strategy, ABC):
         """
         assert trade.side in (Side.BUY, Side.SELL)
         if extrema is None:
-            extrema = pd.Timestamp.now()
+            extrema = pd.Timestamp.now(tz=TZ)
 
         if trade.side is Side.BUY:
             _capital = self.capital - trade.cost
@@ -183,7 +194,7 @@ class FinancialsMixin(Strategy, ABC):
         """
         assert trade.side in (Side.BUY, Side.SELL)
         if extrema is None:
-            extrema = pd.Timestamp.now()
+            extrema = pd.Timestamp.now(tz=TZ)
 
         if trade.side is Side.BUY:
             _assets = self.assets + trade.amt

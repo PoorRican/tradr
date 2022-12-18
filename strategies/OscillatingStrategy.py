@@ -1,10 +1,10 @@
 from abc import ABC
 from datetime import datetime
 import pandas as pd
-from pytz import timezone
 from typing import Union, Tuple, Sequence
 
 from analysis.financials import FinancialsMixin
+from core import TZ
 from models import Indicator, IndicatorContainer
 from primitives import Signal, Side
 
@@ -112,11 +112,11 @@ class OscillatingStrategy(FinancialsMixin, ABC):
             - Pass trend strength (if trend is bear market) and permit buys if trend is strong enough
         """
         last = self.orders.iloc[-1].name
-        last = pd.Timestamp.fromtimestamp(last.timestamp(), tz=timezone('US/Pacific'))
+        last = pd.Timestamp.fromtimestamp(last.timestamp(), tz=TZ)
         if point:
             now = point
         else:
-            now = datetime.now(tz=timezone('US/Pacific'))
+            now = datetime.now(tz=TZ)
         diff = now - last
         period = pd.to_timedelta(self.timeout)
 

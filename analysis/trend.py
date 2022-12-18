@@ -1,10 +1,9 @@
 import concurrent.futures
 from math import floor
 import pandas as pd
-from pytz import timezone
-from typing import Mapping, Optional, NoReturn
+from typing import Mapping, Optional, NoReturn, Union
 
-from core.MarketAPI import MarketAPI
+from core import MarketAPI, TZ
 from models.indicators import *
 from models import IndicatorContainer
 from primitives import TrendMovement, MarketTrend
@@ -82,7 +81,7 @@ class TrendDetector(object):
         else:
             [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
 
-    def _process_point(self, point: pd.Timestamp, freq: str) -> pd.Timestamp:
+    def _process_point(self, point: pd.Timestamp, freq: str) -> Union['pd.Timestamp', str]:
         """ Quantize and shift timestamp `point` for parsing market specific data.
 
         Used for indexing higher level frequencies
@@ -186,7 +185,7 @@ class TrendDetector(object):
         # remove `freq` value to prevent `KeyError`
         # TODO: is reusing the name going to affect original `point`?
         if hasattr(point, 'timestamp'):
-            point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
+            point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=TZ)
 
         if self.threads:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:

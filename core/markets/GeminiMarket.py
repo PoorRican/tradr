@@ -9,6 +9,7 @@ import requests
 import logging
 
 from core.MarketAPI import MarketAPI
+from core.misc import TZ
 from models import json_to_df, Trade, SuccessfulTrade
 
 
@@ -125,7 +126,7 @@ class GeminiMarket(MarketAPI):
         # set flag/metadata on `DataFrame`
         # TODO: use pandas' built-in `freq` value for index
         data.attrs['freq'] = freq
-        data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
+        data.index = data.index.tz_localize(TZ, ambiguous='infer')
 
         return data
 
