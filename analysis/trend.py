@@ -5,7 +5,7 @@ from pytz import timezone
 from typing import Mapping, Optional, NoReturn
 
 from core.MarketAPI import MarketAPI
-from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow
+from models.indicators import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow
 from models.trend import TrendMovement, MarketTrend
 
 

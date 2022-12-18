@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Sequence, Union
 
 from analysis.trend import TrendDetector
-from models.signals import MACDRow, BBANDSRow, STOCHRSIRow
+from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
 from models.trades import Side
 from models.trend import TrendMovement
 from strategies.OscillatingStrategy import OscillatingStrategy
