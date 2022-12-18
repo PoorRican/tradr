@@ -16,15 +16,11 @@ STRONG_THRESHOLD = 3
 class TrendDetector(object):
     """ An independent object that provides foresight by encapsulating analysis of market trends.
 
-    Candle data is stored internally in `_candles`
-
     Uses multiple long-term (ie: 1H, 6H, 1 day, 1 week) candle data to detect if market is trending up, down or is
     remaining constant. This data is used to better characterize enter/exit points and modulate trading amount (eg:
     buy more/sell less during downtrend, buy less/say more during uptrend).
 
     Methods:
-        - `update_candles()`:
-            Update internal candle data
         - `develop()`:
             Calculate all indicators
         - `characterize()`:
@@ -37,11 +33,12 @@ class TrendDetector(object):
     Shall be ordered from shortest-to-longest.
     """
 
-    def __init__(self, market: MarketAPI, threads: int = 0, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, market: MarketAPI, threads: int = 0, lookback: int = 1):
+        super().__init__()
 
         self.market = market
         self.threads = threads
+        self.lookback = lookback
 
         self._indicators: Mapping[str, 'IndicatorContainer'] = self._create_indicator_container()
         """ Store indicator data as a mapping where each key is a frequency.
@@ -50,7 +47,8 @@ class TrendDetector(object):
     def _create_indicator_container(self) -> Mapping[str, 'IndicatorContainer']:
         indicators = {}
         for freq in self._frequencies:
-            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow], lookback=1, threads=self.threads)
+            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow],
+                                                  lookback=self.lookback, threads=self.threads)
         return indicators
 
     def candles(self, frequency: str) -> pd.DataFrame:

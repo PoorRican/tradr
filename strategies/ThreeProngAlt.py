@@ -38,7 +38,7 @@ class ThreeProngAlt(OscillatingStrategy):
     """
     __name__ = 'ThreeProngAlt'
 
-    def __init__(self, threads: int = 4, **kwargs):
+    def __init__(self, **kwargs):
         """
 
         Args:
@@ -51,10 +51,9 @@ class ThreeProngAlt(OscillatingStrategy):
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
         _indicators: Sequence = [BBANDSRow, MACDRow, STOCHRSIRow]
-        super().__init__(indicators=_indicators, threads=threads, **kwargs)
+        super().__init__(indicators=_indicators, **kwargs)
 
-        self.threads = threads
-        self.detector = TrendDetector(self.market, threads=threads)
+        self.detector = TrendDetector(self.market, threads=self.threads)
         """ Sensor-like class that detects market trends through the `characterize()` method.
         
         Calculation of indicator data should be performed by a threaded-routine managed by startup level scheduler.

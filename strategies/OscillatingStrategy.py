@@ -11,7 +11,7 @@ from primitives import Signal, Side
 
 class OscillatingStrategy(FinancialsMixin, ABC):
     def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h',
-                 threads: int = 4, **kwargs):
+                 threads: int = 4, lookback: int = 2, **kwargs):
         """
         Args:
             indicators:
@@ -22,8 +22,10 @@ class OscillatingStrategy(FinancialsMixin, ABC):
         """
         super().__init__(**kwargs)
 
+        self.threads = threads
+        self.lookback = lookback
         self.timeout: str = timeout
-        self.indicators: IndicatorContainer = IndicatorContainer(indicators, lookback=1)
+        self.indicators: IndicatorContainer = IndicatorContainer(indicators, lookback=self.lookback)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.
