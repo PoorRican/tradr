@@ -358,23 +358,29 @@ class FinancialsMixin(Strategy, ABC):
 
         self.incomplete.drop(index=_drop, inplace=True)
 
-    def plot(self, size: int = 5000):
+    def plot(self, size: int = 10, scalar: int = 4):
         """ Plot trade enter and exit points as an overlay to market data.
-
-        Args:
-            size:
-                Scalar multiplier for marker size. Since marker size corresponds to amount of assets traded, this should
-                be larger for assets of larger values as for a fixed price asset value and amount are inversely
-                proportional (and therefore may be less than one).
 
         TODO:
             - subgraph which shows assets/capital
-            - dynamically calculate scalar for marker size
         """
         o = self.orders
         sells = o[o['side'] == -1]
         buys = o[o['side'] == 1]
-        plt.figure(figsize=[50, 25], dpi=250)
+
+        # normalize amt column so that the smallest value is 1
+        _min_buys = buys['amt'].min()
+        _max_buys = buys['amt'].max()
+        _min_sells = sells['amt'].min()
+        _max_sells = sells['amt'].max()
+        _buys = ((buys['amt'] - _min_buys) / (_max_buys - _min_buys)) + size
+        _sells = ((sells['amt'] - _min_sells) / (_max_sells - _min_sells)) + size
+
+        plt.figure(figsize=[16, 9], dpi=250)
         plt.plot(self.candles.index, self.candles['close'], color=to_rgba('red', 0.5))
-        plt.scatter(buys.index, buys['rate'], buys['amt'] * size, marker="^", color=to_rgba('green', .8))
-        plt.scatter(sells.index, sells['rate'], sells['amt'] * size, marker="v", color=to_rgba('blue', 1))
+
+        # plot decision outcomes
+        if len(buys):
+            plt.scatter(buys.index, buys['rate'], _buys * scalar, marker="^", color=to_rgba('green', .8))
+        if len(sells):
+            plt.scatter(sells.index, sells['rate'], _sells * scalar, marker="v", color=to_rgba('blue', 1))
