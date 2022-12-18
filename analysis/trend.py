@@ -9,6 +9,10 @@ from models import IndicatorContainer
 from primitives import TrendMovement, MarketTrend
 
 
+STRONG_THRESHOLD = 3
+""" This is a scalar value which determines whether a trend is strong or not. """
+
+
 class TrendDetector(object):
     """ An independent object that provides foresight by encapsulating analysis of market trends.
 
@@ -84,7 +88,16 @@ class TrendDetector(object):
     def _process_point(self, point: pd.Timestamp, freq: str) -> Union['pd.Timestamp', str]:
         """ Quantize and shift timestamp `point` for parsing market specific data.
 
-        Used for indexing higher level frequencies
+        Used for indexing higher level frequencies. Frequency needs to be modified before accessing indicator graphs. A
+        pandas unit of frequency to select indicator data from greater time frequencies needs to be passed as `point`.
+        Used by `TrendDetector` to prevent `KeyError` from being raised during simulation arising from larger timeframes
+        of stored candle data (ie: 1day, 6hr, or 1hr) and smaller timeframes used by strategy/backtesting functions
+        (ie: '15min'). If passed, `point` is rounded down to the largest frequency less than `point` (eg: 14:45 becomes
+        14:00). If not passed, `point` is untouched.
+
+        Notes:
+            Specific times and offsets are market dependent. Function is currently set for the Gemini platform. In the
+            future, this function will be migrated and declared `MarketAPI` but defined in specific platform instances.
 
         Args:
             point:
@@ -102,8 +115,6 @@ class TrendDetector(object):
                 _point -= pd.DateOffset(hours=4)
             _point = _point.floor('H', nonexistent='shift_backward')
         elif _freq == '1D':
-            # TODO: faulty implementation
-            # Incorrect date is indexed immediately after daily candle data is released.
             _point -= pd.DateOffset(days=1)
             _point = point.strftime('%m/%d/%Y')          # generically select data
         return _point
@@ -117,12 +128,6 @@ class TrendDetector(object):
             executor:
 
         Notes:
-            Frequency needs to be modified before accessing indicator graphs. A pandas unit of frequency to select
-            indicator data from greater time frequencies needs to be passed as `point`. Used by
-            `TrendDetector` to prevent `KeyError` from being raised during simulation arising from larger timeframes
-            of stored candle data (ie: 1day, 6hr, or 1hr)  and smaller timeframes used by strategy/backtesting
-            functions (ie: 15min). If passed, `point` is rounded down to the largest frequency less than `point`
-            (eg: 14:45 becomes 14:00). If not passed, `point` is untouched.
 
         Returns:
 
@@ -182,8 +187,8 @@ class TrendDetector(object):
         if not point:
             point = self.market.most_recent_timestamp
 
-        # remove `freq` value to prevent `KeyError`
         # TODO: is reusing the name going to affect original `point`?
+        # remove `freq` value to prevent `KeyError`
         if hasattr(point, 'timestamp'):
             point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=TZ)
 

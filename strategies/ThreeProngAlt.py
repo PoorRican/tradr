@@ -3,7 +3,7 @@ from math import ceil
 import pandas as pd
 from typing import Sequence, Union
 
-from analysis.trend import TrendDetector
+from analysis.trend import TrendDetector, STRONG_THRESHOLD
 from models.indicators import *
 from strategies.OscillatingStrategy import OscillatingStrategy
 from primitives import Side, TrendMovement
@@ -143,7 +143,7 @@ class ThreeProngAlt(OscillatingStrategy):
 
         # prevent incorrect trades during strong trend
         _trend = self.detector.characterize(extrema)
-        if _trend.scalar > 6 and \
+        if _trend.scalar > STRONG_THRESHOLD and \
            (_trend.trend is TrendMovement.UP and side is Side.BUY) or \
            (_trend.trend is TrendMovement.DOWN and side is Side.SELL):
             logging.warning('Prevented unaligned trade during strong trend')
