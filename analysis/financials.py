@@ -7,7 +7,8 @@ from typing import NoReturn, Tuple, Union
 from warnings import warn
 
 from core import TZ
-from models import SuccessfulTrade
+from models import SuccessfulTrade, Indicator, IndicatorContainer
+from models.indicators import BBANDSRow, MACDRow
 from primitives import Side
 from strategies import Strategy
 
@@ -360,9 +361,6 @@ class FinancialsMixin(Strategy, ABC):
 
     def plot(self, size: int = 10, scalar: int = 4):
         """ Plot trade enter and exit points as an overlay to market data.
-
-        TODO:
-            - subgraph which shows assets/capital
         """
         o = self.orders
         sells = o[o['side'] == -1]
@@ -376,11 +374,56 @@ class FinancialsMixin(Strategy, ABC):
         _buys = ((buys['amt'] - _min_buys) / (_max_buys - _min_buys)) + size
         _sells = ((sells['amt'] - _min_sells) / (_max_sells - _min_sells)) + size
 
-        plt.figure(figsize=[16, 9], dpi=250)
-        plt.plot(self.candles.index, self.candles['close'], color=to_rgba('red', 0.5))
+        fig, ax = plt.subplots(nrows=3, figsize=[16, 9*3], dpi=250)
+        pri = ax[0]
+        pri.plot(self.candles.index, self.candles['close'], color=to_rgba('blue', 0.8))
 
         # plot decision outcomes
-        if len(buys):
-            plt.scatter(buys.index, buys['rate'], _buys * scalar, marker="^", color=to_rgba('green', .8))
-        if len(sells):
-            plt.scatter(sells.index, sells['rate'], _sells * scalar, marker="v", color=to_rgba('blue', 1))
+        if len(buys) > 0:
+            pri.scatter(buys.index, buys['rate'], _buys * scalar, marker="^", color='red')
+        if len(sells) > 0:
+            pri.scatter(sells.index, sells['rate'], _sells * scalar, marker="v", color='green')
+        if len(self.failed_orders) > 0:
+            pri.scatter(self.failed_orders.index, self.failed_orders['rate'], color="black")
+
+        # add BBANDS
+        _attr = 'indicators'
+        if hasattr(self, _attr):            # TODO: `plot()` assumes that `IndicatorContainer` has `BBANDSRow`
+            _class = BBANDSRow
+            container: IndicatorContainer = getattr(self, _attr)
+            # noinspection PyTypeChecker
+            idx = container.find(_class)
+            instance: Indicator = container[idx]
+            graph: pd.DataFrame = instance.graph
+            for col in [graph[_col] for _col in graph.columns]:
+                pri.plot(col.index, col.values, color=to_rgba('cyan', .1))
+            del col
+
+        # plot `assets` and `capital`
+        sec = ax[2]
+        _assets: pd.Series = self._assets.copy()
+        _assets.reindex(self.candles.index, copy=False)
+        sec.plot(_assets.index, _assets, color="purple")
+        sec.legend()
+
+        sec2 = sec.twinx()
+        _capital = self._capital.copy()
+        _capital.reindex(self.candles.index, copy=False)
+        sec2.plot(_capital.index, _capital.values, color="green")
+        sec2.legend()
+
+        # plot signals and indicators
+        if hasattr(self, _attr):            # TODO: `plot()` assumes that `IndicatorContainer` has `BBANDSRow`
+            macd = ax[1]
+            container: IndicatorContainer = getattr(self, _attr)
+            # noinspection PyTypeChecker
+            idx = container.find(MACDRow)
+            instance: Indicator = container[idx]
+            graph: pd.DataFrame = instance.graph
+            _g: pd.DataFrame = graph.copy()
+            _g.reindex(self.candles.index, copy=False)
+            for i in ('macd', 'macdsignal'):
+                _col = _g[i]
+                macd.plot(_g.index, _col)
+            macd.hist(_g.index, _g['macdhist'])
+        plt.show()

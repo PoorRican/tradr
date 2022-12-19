@@ -16,12 +16,25 @@ class IndicatorContainer(object):
     This can be used in `Strategy` to direct trade decisions, or can be used to indicate trends."""
     def __init__(self, indicators: Sequence[type(Indicator)], index: Optional[pd.Index] = None, lookback: int = 0,
                  threads: int = 4):
-        self.indicators = [i(index, lookback) for i in indicators]
+        self.indicators: Sequence[Indicator] = [i(index, lookback) for i in indicators]
         self.threads = threads
+
+    def find(self, cls: type(Indicator)) -> Union[int, 'False']:
+        for i, _instance in enumerate(self.indicators):
+            # noinspection PyTypeChecker
+            if isinstance(_instance, cls):
+                return i
+        return False
+
+    def isin(self, cls: type(Indicator)) -> bool:
+        return type(self.find(cls)) == int
 
     def develop_threads(self, executor, candles: pd.DataFrame) -> Sequence['concurrent.futures.Future']:
         fs = [executor.submit(indicator.process, candles) for indicator in self.indicators]
         return fs
+
+    def __getitem__(self, item) -> Indicator:
+        return self.indicators[item]
 
     def develop(self, data: pd.DataFrame, buffer: bool = False,
                 executor: concurrent.futures.Executor = None) -> NoReturn:
