@@ -311,7 +311,13 @@ class GeminiMarket(MarketAPI):
                 _point -= pd.DateOffset(hours=4)
             _point = _point.floor('H', nonexistent='shift_backward')
         elif _freq == '1D':
+            # check if data for current day exists
+            _str = _point.strftime('%m/%d/%Y')
+            if _str in self.candles(freq).index:   # generically select data
+                return _str
+
             _point -= pd.DateOffset(days=1)
-            _point = point.strftime('%m/%d/%Y')          # generically select data
+            _point = _point.strftime('%m/%d/%Y')          # generically select data
+
         return _point
 
