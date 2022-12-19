@@ -8,7 +8,7 @@ from warnings import warn
 
 from core import TZ
 from models import SuccessfulTrade, Indicator, IndicatorContainer
-from models.indicators import BBANDSRow, MACDRow
+from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
 from primitives import Side
 from strategies import Strategy
 
@@ -374,7 +374,7 @@ class FinancialsMixin(Strategy, ABC):
         _buys = ((buys['amt'] - _min_buys) / (_max_buys - _min_buys)) + size
         _sells = ((sells['amt'] - _min_sells) / (_max_sells - _min_sells)) + size
 
-        fig, ax = plt.subplots(nrows=3, figsize=[16, 9*3], dpi=250)
+        fig, ax = plt.subplots(nrows=4, figsize=[16, 9*4], dpi=250)
         pri = ax[0]
         pri.plot(self.candles.index, self.candles['close'], color=to_rgba('blue', 0.8))
 
@@ -400,20 +400,19 @@ class FinancialsMixin(Strategy, ABC):
             del col
 
         # plot `assets` and `capital`
-        sec = ax[2]
+        sec = ax[3]
         _assets: pd.Series = self._assets.copy()
         _assets.reindex(self.candles.index, copy=False)
         sec.plot(_assets.index, _assets, color="purple")
-        sec.legend()
 
         sec2 = sec.twinx()
         _capital = self._capital.copy()
         _capital.reindex(self.candles.index, copy=False)
         sec2.plot(_capital.index, _capital.values, color="green")
-        sec2.legend()
 
         # plot signals and indicators
         if hasattr(self, _attr):            # TODO: `plot()` assumes that `IndicatorContainer` has `BBANDSRow`
+            # MACD graph
             macd = ax[1]
             container: IndicatorContainer = getattr(self, _attr)
             # noinspection PyTypeChecker
@@ -425,5 +424,16 @@ class FinancialsMixin(Strategy, ABC):
             for i in ('macd', 'macdsignal'):
                 _col = _g[i]
                 macd.plot(_g.index, _col)
-            macd.hist(_g.index, _g['macdhist'])
+
+            # Stoch RSI graph
+            stoch = ax[2]
+            idx = container.find(STOCHRSIRow)
+            instance = container[idx]
+            graph = instance.graph
+            _g: pd.DataFrame = graph.copy()
+            _g.reindex(self.candles.index, copy=False)
+            for i in _g.columns:
+                _col = _g[i]
+                stoch.plot(_g.index, _col)
+
         plt.show()
