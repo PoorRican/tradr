@@ -262,3 +262,29 @@ class MarketAPI(Market, ABC):
         data = self._repair_candles(data, freq)
 
         return data
+
+    @abstractmethod
+    def process_point(self, point: pd.Timestamp, freq: str) -> Union['pd.Timestamp', str]:
+        """ Quantize and shift timestamp `point` for parsing market specific data.
+
+        Used for indexing higher level frequencies. Frequency needs to be modified before accessing indicator graphs. A
+        pandas unit of frequency to select indicator data from greater time frequencies needs to be passed as `point`.
+        Used by `TrendDetector` to prevent `KeyError` from being raised during simulation arising from larger timeframes
+        of stored candle data (ie: 1day, 6hr, or 1hr) and smaller timeframes used by strategy/backtesting functions
+        (ie: '15min'). If passed, `point` is rounded down to the largest frequency less than `point` (eg: 14:45 becomes
+        14:00). If not passed, `point` is untouched.
+
+        Notes:
+            Specific times and offsets are market dependent. Function is currently set for the Gemini platform. In the
+            future, this function will be migrated and declared `MarketAPI` but defined in specific platform instances.
+
+        Args:
+            point:
+                timestamp to use to index `_indicators`
+            freq:
+                Unit of time to quantize to. Should be written
+
+        Returns:
+            Quantized and shifted pd.Timestamp (or str if `freq='1D'`
+        """
+        pass

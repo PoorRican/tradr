@@ -1,3 +1,4 @@
+import pandas as pd
 from typing import Union
 
 from core.market import Market
@@ -43,3 +44,6 @@ class SimulatedMarket(Market):
 
     def candles(self, freq: str):
         return self.model.candles(freq)
+
+    def process_point(self, point: pd.Timestamp, freq: str) -> Union['pd.Timestamp', str]:
+        return self.model.process_point(point, freq)
