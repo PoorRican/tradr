@@ -27,7 +27,7 @@ class TrendDetector(object):
             Determine `MarketTrend` for a given point
     """
 
-    _frequencies = ('1hr', '6hr', '1day')
+    _frequencies = ('30m', '1hr', '6hr', '1day')
     """ Frequencies to use for fetching candle data.
     
     Shall be ordered from shortest-to-longest.
