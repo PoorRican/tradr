@@ -117,6 +117,10 @@ class GeminiMarket(MarketAPI):
 
         response = requests.get(self.BASE_URL + f"/v2/candles/{self.symbol}/{freq}")
         raw_candle_data = response.json()
+        if type(raw_candle_data) is dict\
+                and 'result' in raw_candle_data.keys()\
+                and raw_candle_data['result'] == 'error':
+            raise ConnectionError(raw_candle_data['message'])
         data = json_to_df(raw_candle_data)
 
         # reverse so data is ascending (oldest to most recent)

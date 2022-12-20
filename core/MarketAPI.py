@@ -201,9 +201,11 @@ class MarketAPI(Market, ABC):
             data.index = pd.MultiIndex.from_tuples(data.index)      # convert to MultiIndex
             self._data = data
             # self.save()
-        except urllib3.HTTPSConnectionPool as e:
-            logging.error(f'Connection error during `MarketAPI.update(): {e}')
-            warnings.warn("Connection error")
+        except ConnectionError as e:
+            msg = f'Connection Error. Deferring to cached data.'
+            logging.error(e)
+            warnings.warn(msg)
+            raise e
 
     @abstractmethod
     def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
