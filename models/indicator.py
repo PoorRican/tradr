@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from math import isnan, floor
+import matplotlib as plt
 from matplotlib.colors import to_rgba
 from matplotlib.pyplot import Figure
 import pandas as pd
@@ -201,15 +202,27 @@ class Indicator(ABC):
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
         pass
 
-    def plot(self, figure: Figure, index: pd.Index = None, color=to_rgba('cyan', .1)) -> NoReturn:
+    def plot(self, figure: Figure, index: int, reindex: pd.Index = None, color=to_rgba('cyan', .1),
+             start: pd.Timestamp = None, stop: pd.Timestamp = None,
+             render: bool = True) -> Union[NoReturn, 'Figure']:
         """ Plot onto given figure. """
-        for label in self.graph.columns:
-            col = self.graph[label]
-            if index:
-                _col = col.reindex(index)
+        if start:
+            assert stop is not None
+            graph = self.graph.loc[start:stop]
+        else:
+            graph = self.graph
+
+        for label in graph.columns:
+            col = graph[label]
+            if reindex:
+                _col = col.reindex(reindex)
                 _index = _col.index
                 _values = _col.values
             else:
                 _index = col.index
                 _values = col.values
-            figure.plot(_index, _values, color=color)
+            figure[index].plot(_index, _values, color=color)
+
+        if not render:
+            return figure
+        plt.show()

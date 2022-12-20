@@ -80,3 +80,8 @@ class BBANDSRow(Indicator):
                 return 2
             return 3
         return 0
+
+    def plot(self, *args, **kwargs):
+        primary_idx = 0
+        # always attempt to add to primary sub-plot
+        return super().plot(*args, **kwargs, index=primary_idx, )

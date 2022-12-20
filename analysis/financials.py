@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 from matplotlib.pyplot import Figure
 import pandas as pd
-from typing import NoReturn, Tuple, Union, List
+from typing import NoReturn, Tuple, Union
 from warnings import warn
 
 from core import TZ
-from models import SuccessfulTrade, Indicator, IndicatorContainer
+from models import SuccessfulTrade, IndicatorContainer
 from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
 from primitives import Side
 from strategies import Strategy
@@ -360,14 +360,34 @@ class FinancialsMixin(Strategy, ABC):
 
         self.incomplete.drop(index=_drop, inplace=True)
 
-    def plot(self, rows: int = 4, render: bool = True):
+    def plot(self, start: Union['pd.Timestamp', str] = None, width: str = '1d', rows: int = 4,
+             render: bool = True) -> Union[NoReturn, 'Figure']:
         """ Plot trade enter and exit points as an overlay to market data.
         """
+        if start:
+            if type(start) is str:
+                point = pd.Timestamp(start)
+            else:
+                point = start
+            delta = pd.Timedelta(width)
+            start = point - delta
+            stop = point + delta
+            candles = self.candles.loc[start:stop]
+            assets = self._assets.loc[start:stop]
+            capital = self._capital.loc[start:stop]
+            endpoints = {'start': start, 'stop': stop}      # dict to be passed as kwargs
+            o = self.orders[start:stop]
+        else:
+            candles = self.candles
+            assets = self._assets
+            capital = self._capital
+            endpoints = {}
+            o = self.orders
+
         # plot settings
         size = 10
         scalar = 4
 
-        o = self.orders
         sells = o[o['side'] == -1]
         buys = o[o['side'] == 1]
 
@@ -381,7 +401,7 @@ class FinancialsMixin(Strategy, ABC):
 
         fig, ax = plt.subplots(nrows=4, figsize=[16, 9*4], dpi=250)
         pri = ax[0]
-        pri.plot(self.candles.index, self.candles['close'], color=to_rgba('blue', 0.8))
+        pri.plot(candles.index, candles['close'], color=to_rgba('blue', 0.8))
 
         # plot decision outcomes
         if len(buys) > 0:
@@ -393,25 +413,25 @@ class FinancialsMixin(Strategy, ABC):
 
         # plot `assets` and `capital`
         sec = ax[3]
-        _assets: pd.Series = self._assets.copy()
-        _assets.reindex(self.candles.index, copy=False)
+        _assets: pd.Series = assets.copy()
+        _assets.reindex(candles.index, copy=False)
         sec.plot(_assets.index, _assets, color="purple")
 
         sec2 = sec.twinx()
-        _capital = self._capital.copy()
-        _capital.reindex(self.candles.index, copy=False)
+        _capital = capital.copy()
+        _capital.reindex(candles.index, copy=False)
         sec2.plot(_capital.index, _capital.values, color="green")
 
         # plot signals and indicators
         _attr = 'indicators'
         if hasattr(self, _attr):
-            macd = ax[2]
-            stoch = ax[3]
+            macd = 2
+            stoch = 3
 
             container: IndicatorContainer = getattr(self, _attr)
-            container[BBANDSRow].plot(pri)
-            container[MACDRow].plot(macd)
-            container[STOCHRSIRow].plot(stoch)
+            container[BBANDSRow].plot(ax, **endpoints)
+            container[MACDRow].plot(ax, macd, **endpoints)
+            container[STOCHRSIRow].plot(ax, stoch, **endpoints)
 
         if not render:
             return ax
