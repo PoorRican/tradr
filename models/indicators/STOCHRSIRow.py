@@ -1,8 +1,7 @@
 from math import fabs, isnan, ceil
-from typing import Union
-
 import pandas as pd
 from talib import STOCHRSI
+from typing import Union
 
 from models.indicator import Indicator
 from primitives import Signal

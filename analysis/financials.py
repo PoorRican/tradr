@@ -2,8 +2,9 @@ from abc import ABC
 import logging
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
+from matplotlib.pyplot import Figure
 import pandas as pd
-from typing import NoReturn, Tuple, Union
+from typing import NoReturn, Tuple, Union, List
 from warnings import warn
 
 from core import TZ
@@ -359,9 +360,13 @@ class FinancialsMixin(Strategy, ABC):
 
         self.incomplete.drop(index=_drop, inplace=True)
 
-    def plot(self, size: int = 10, scalar: int = 4):
+    def plot(self, rows: int = 4, render: bool = True):
         """ Plot trade enter and exit points as an overlay to market data.
         """
+        # plot settings
+        size = 10
+        scalar = 4
+
         o = self.orders
         sells = o[o['side'] == -1]
         buys = o[o['side'] == 1]
@@ -386,19 +391,6 @@ class FinancialsMixin(Strategy, ABC):
         if len(self.failed_orders) > 0:
             pri.scatter(self.failed_orders.index, self.failed_orders['rate'], color="black")
 
-        # add BBANDS
-        _attr = 'indicators'
-        if hasattr(self, _attr):            # TODO: `plot()` assumes that `IndicatorContainer` has `BBANDSRow`
-            _class = BBANDSRow
-            container: IndicatorContainer = getattr(self, _attr)
-            # noinspection PyTypeChecker
-            idx = container.find(_class)
-            instance: Indicator = container[idx]
-            graph: pd.DataFrame = instance.graph
-            for col in [graph[_col] for _col in graph.columns]:
-                pri.plot(col.index, col.values, color=to_rgba('cyan', .1))
-            del col
-
         # plot `assets` and `capital`
         sec = ax[3]
         _assets: pd.Series = self._assets.copy()
@@ -411,29 +403,16 @@ class FinancialsMixin(Strategy, ABC):
         sec2.plot(_capital.index, _capital.values, color="green")
 
         # plot signals and indicators
-        if hasattr(self, _attr):            # TODO: `plot()` assumes that `IndicatorContainer` has `BBANDSRow`
-            # MACD graph
-            macd = ax[1]
+        _attr = 'indicators'
+        if hasattr(self, _attr):
+            macd = ax[2]
+            stoch = ax[3]
+
             container: IndicatorContainer = getattr(self, _attr)
-            # noinspection PyTypeChecker
-            idx = container.find(MACDRow)
-            instance: Indicator = container[idx]
-            graph: pd.DataFrame = instance.graph
-            _g: pd.DataFrame = graph.copy()
-            _g.reindex(self.candles.index, copy=False)
-            for i in ('macd', 'macdsignal'):
-                _col = _g[i]
-                macd.plot(_g.index, _col)
+            container[BBANDSRow].plot(pri)
+            container[MACDRow].plot(macd)
+            container[STOCHRSIRow].plot(stoch)
 
-            # Stoch RSI graph
-            stoch = ax[2]
-            idx = container.find(STOCHRSIRow)
-            instance = container[idx]
-            graph = instance.graph
-            _g: pd.DataFrame = graph.copy()
-            _g.reindex(self.candles.index, copy=False)
-            for i in _g.columns:
-                _col = _g[i]
-                stoch.plot(_g.index, _col)
-
+        if not render:
+            return ax
         plt.show()

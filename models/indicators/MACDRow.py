@@ -1,7 +1,7 @@
 from math import isnan, nan
-from typing import Union, NoReturn, Iterable
 import pandas as pd
 from talib import MACD
+from typing import Union, Iterable
 
 from models.indicator import Indicator, MAX_STRENGTH
 from primitives import Signal

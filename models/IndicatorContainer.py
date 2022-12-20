@@ -33,8 +33,13 @@ class IndicatorContainer(object):
         fs = [executor.submit(indicator.process, candles) for indicator in self.indicators]
         return fs
 
-    def __getitem__(self, item) -> Indicator:
-        return self.indicators[item]
+    def __getitem__(self, item: Union[int, type(Indicator)]) -> Indicator:
+        if type(item) == int:
+            return self.indicators[item]
+        elif issubclass(item, Indicator):
+            return self.indicators[self.find(item)]
+        else:
+            raise ValueError("Incorrect type for `item` argument")
 
     def develop(self, data: pd.DataFrame, buffer: bool = False,
                 executor: concurrent.futures.Executor = None) -> NoReturn:

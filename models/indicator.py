@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from math import isnan, floor
-from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Tuple, Union
+from matplotlib.colors import to_rgba
+from matplotlib.pyplot import Figure
 import pandas as pd
+from typing import Sequence, ClassVar, Callable, Dict, NoReturn, Tuple, Union
 
 from primitives import Signal
 
@@ -198,3 +200,16 @@ class Indicator(ABC):
     @abstractmethod
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
         pass
+
+    def plot(self, figure: Figure, index: pd.Index = None, color=to_rgba('cyan', .1)) -> NoReturn:
+        """ Plot onto given figure. """
+        for label in self.graph.columns:
+            col = self.graph[label]
+            if index:
+                _col = col.reindex(index)
+                _index = _col.index
+                _values = _col.values
+            else:
+                _index = col.index
+                _values = col.values
+            figure.plot(_index, _values, color=color)

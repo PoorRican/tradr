@@ -1,8 +1,7 @@
 from math import isnan
-from typing import Union, Tuple
-
 import pandas as pd
 from talib import BBANDS
+from typing import Union, Tuple
 
 from models.indicator import Indicator
 from primitives import Signal
