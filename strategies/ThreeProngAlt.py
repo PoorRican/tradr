@@ -128,6 +128,12 @@ class ThreeProngAlt(OscillatingStrategy):
                 return self.capital / rate
             return amt
 
+    @staticmethod
+    def _incorrect_trade(trend, side) -> bool:
+        return trend.scalar > STRONG_THRESHOLD and \
+               (trend.trend is TrendMovement.UP and side is Side.BUY) or \
+               (trend.trend is TrendMovement.DOWN and side is Side.SELL)
+
     def _is_profitable(self, amount: float, rate: float, side: Side,
                        extrema: Union['pd.Timestamp', str] = None) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
@@ -140,12 +146,11 @@ class ThreeProngAlt(OscillatingStrategy):
         """
         assert side in (Side.BUY, Side.SELL)
 
-        # prevent incorrect trades during strong trend
         _trend = self.detector.characterize(extrema)
-        if _trend.scalar > STRONG_THRESHOLD and \
-           (_trend.trend is TrendMovement.UP and side is Side.BUY) or \
-           (_trend.trend is TrendMovement.DOWN and side is Side.SELL):
-            logging.warning('Prevented unaligned trade during strong trend')
+
+        # prevent incorrect trades during strong trend
+        if self._incorrect_trade(_trend, side):
+            logging.warning(f'Prevented unaligned trade during strong trend @ {extrema}')
             return False
 
         if side == Side.BUY:

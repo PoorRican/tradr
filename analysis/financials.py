@@ -1,15 +1,11 @@
 from abc import ABC
 import logging
-import matplotlib.pyplot as plt
-from matplotlib.colors import to_rgba
-from matplotlib.pyplot import Figure
 import pandas as pd
 from typing import NoReturn, Tuple, Union
 from warnings import warn
 
 from core import TZ
-from models import SuccessfulTrade, IndicatorContainer
-from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
+from models import SuccessfulTrade
 from primitives import Side
 from strategies import Strategy
 
@@ -129,6 +125,10 @@ class FinancialsMixin(Strategy, ABC):
         self._timeseries_setter(value, '_capital')
 
     @property
+    def capital_ts(self) -> pd.Series:
+        return self._capital
+
+    @property
     def assets(self) -> float:
         try:
             return self._assets.iloc[-1]
@@ -138,6 +138,10 @@ class FinancialsMixin(Strategy, ABC):
     @assets.setter
     def assets(self, value: Union[float, Tuple['pd.Timestamp', float]]):
         self._timeseries_setter(value, '_assets')
+
+    @property
+    def assets_ts(self) -> pd.Series:
+        return self._assets
 
     @property
     def starting(self) -> float:
@@ -359,80 +363,3 @@ class FinancialsMixin(Strategy, ABC):
                 self.incomplete.loc[self.incomplete['id'] == order['id'], 'amt'] = _remaining
 
         self.incomplete.drop(index=_drop, inplace=True)
-
-    def plot(self, start: Union['pd.Timestamp', str] = None, width: str = '1d', rows: int = 4,
-             render: bool = True) -> Union[NoReturn, 'Figure']:
-        """ Plot trade enter and exit points as an overlay to market data.
-        """
-        if start:
-            if type(start) is str:
-                point = pd.Timestamp(start)
-            else:
-                point = start
-            delta = pd.Timedelta(width)
-            start = point - delta
-            stop = point + delta
-            candles = self.candles.loc[start:stop]
-            assets = self._assets.loc[start:stop]
-            capital = self._capital.loc[start:stop]
-            endpoints = {'start': start, 'stop': stop}      # dict to be passed as kwargs
-            o = self.orders[start:stop]
-        else:
-            candles = self.candles
-            assets = self._assets
-            capital = self._capital
-            endpoints = {}
-            o = self.orders
-
-        # plot settings
-        size = 10
-        scalar = 4
-
-        sells = o[o['side'] == -1]
-        buys = o[o['side'] == 1]
-
-        # normalize amt column so that the smallest value is 1
-        _min_buys = buys['amt'].min()
-        _max_buys = buys['amt'].max()
-        _min_sells = sells['amt'].min()
-        _max_sells = sells['amt'].max()
-        _buys = ((buys['amt'] - _min_buys) / (_max_buys - _min_buys)) + size
-        _sells = ((sells['amt'] - _min_sells) / (_max_sells - _min_sells)) + size
-
-        fig, ax = plt.subplots(nrows=4, figsize=[16, 9*4], dpi=250)
-        pri = ax[0]
-        pri.plot(candles.index, candles['close'], color=to_rgba('blue', 0.8))
-
-        # plot decision outcomes
-        if len(buys) > 0:
-            pri.scatter(buys.index, buys['rate'], _buys * scalar, marker="^", color='red')
-        if len(sells) > 0:
-            pri.scatter(sells.index, sells['rate'], _sells * scalar, marker="v", color='green')
-        if len(self.failed_orders) > 0:
-            pri.scatter(self.failed_orders.index, self.failed_orders['rate'], color="black")
-
-        # plot `assets` and `capital`
-        sec = ax[3]
-        _assets: pd.Series = assets.copy()
-        _assets.reindex(candles.index, copy=False)
-        sec.plot(_assets.index, _assets, color="purple")
-
-        sec2 = sec.twinx()
-        _capital = capital.copy()
-        _capital.reindex(candles.index, copy=False)
-        sec2.plot(_capital.index, _capital.values, color="green")
-
-        # plot signals and indicators
-        _attr = 'indicators'
-        if hasattr(self, _attr):
-            macd = 2
-            stoch = 3
-
-            container: IndicatorContainer = getattr(self, _attr)
-            container[BBANDSRow].plot(ax, **endpoints)
-            container[MACDRow].plot(ax, macd, **endpoints)
-            container[STOCHRSIRow].plot(ax, stoch, **endpoints)
-
-        if not render:
-            return ax
-        plt.show()

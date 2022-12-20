@@ -202,7 +202,7 @@ class Indicator(ABC):
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
         pass
 
-    def plot(self, figure: Figure, index: int, reindex: pd.Index = None, color=to_rgba('cyan', .1),
+    def plot(self, figure: Sequence[Figure], index: int, reindex: pd.Index = None, color=to_rgba('cyan', .1),
              start: pd.Timestamp = None, stop: pd.Timestamp = None,
              render: bool = True) -> Union[NoReturn, 'Figure']:
         """ Plot onto given figure. """
