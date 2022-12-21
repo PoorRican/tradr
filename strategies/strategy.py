@@ -1,23 +1,17 @@
 import pandas as pd
-from os import path, mkdir
+from os import path
 from datetime import datetime
-import numpy as np
 from typing import Tuple, Union, List, Dict
 from abc import ABC, abstractmethod
 import logging
-from yaml import safe_dump, safe_load
 from warnings import warn
 
 from core.MarketAPI import MarketAPI
 from models import DATA_ROOT, Trade, SuccessfulTrade, add_to_df, truncate
-from primitives import Side
+from primitives import Side, StoredObject
 
 
-_FN_EXT = ".yml"
-_LITERALS_FN = f"literals{_FN_EXT}"
-
-
-class Strategy(ABC):
+class Strategy(StoredObject, ABC):
     """ Abstract a trading strategy.
 
         Performs computation necessary to determine when and how much to trade. Inherited instances should
@@ -96,92 +90,6 @@ class Strategy(ABC):
     @property
     def candles(self):
         return self.market.candles(self.freq)
-
-    def load(self):
-        """ Load stored attributes and sequence data from instance directory onto memory.
-
-        Notes
-            All data on memory is overwritten.
-        """
-        # TODO: load linked/stored indicator and market data/parameters
-
-        _dir = self._instance_dir
-
-        # load `_literals`. Literals should be verified (ie: not be a function)
-        with open(path.join(_dir, _LITERALS_FN), 'r') as f:
-            _literals: dict = safe_load(f)
-            for k, v in _literals.items():
-                # verify data
-                assert k in self.__dict__.keys()
-                assert type(v) in (str, int, float)
-
-                setattr(self, k, v)
-
-        for k, v in self.__dict__.items():
-            _t = type(v)
-            if _t not in (pd.DataFrame, pd.Series):
-                continue
-            with open(path.join(_dir, f"{k}.yml"), 'r') as f:
-                container = safe_load(f)
-                if _t == pd.DataFrame:
-                    _seq = pd.DataFrame.from_records(container)
-                elif _t == pd.Series:
-                    _seq = pd.Series(container)
-                else:
-                    warn('non-pandas object passed through check...')
-                    continue
-                setattr(self, k, _seq)
-
-            # TODO: verify data checksum
-
-    def save(self):
-        """ Store attributes and sequence data in instance directory
-
-        Notes:
-            Since `_instance_dir` relies on certain parameters, a factory function should initialize
-            classes based from a runtime file. This runtime file will define attributes such as strategy
-            name, market platform, and symbol, which are the essential characteristics which will differentiate
-            instances from one another. For security reasons, it might be beneficial to hash all instance directories
-            and include checksum in runtime data.
-        """
-        # TODO: somehow link/store market parameters
-        # TODO: somehow link/store indicator data
-
-        # aggregate attributes
-        _literals = {}
-        _df_keys: List[str, ...] = []
-        _sequence_keys: List[str, ...] = []
-        for k, v in self.__dict__.items():
-            _t = type(v)
-            if _t == str or _t == int or _t == float:
-                _literals[k] = v
-            elif _t == np.float64:              # `assets` sometimes get stored as `np.float64`
-                _literals[k] = float(v)
-            elif _t == pd.DataFrame:
-                _df_keys.append(k)
-            elif _t == pd.Series:
-                _sequence_keys.append(k)
-
-        # TODO: implement data checksum
-
-        _dir = self._instance_dir
-
-        if not path.exists(_dir):
-            # TODO: implement mode for read/write access controls
-            mkdir(_dir)
-
-        # store literal parameters
-        with open(path.join(_dir, _LITERALS_FN), 'w') as f:
-            safe_dump(_literals, f)
-
-        # store sequence data
-        for attr in _df_keys:
-            with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
-                safe_dump(getattr(self, attr).to_dict(orient='records'), f)
-
-        for attr in _sequence_keys:
-            with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
-                safe_dump(getattr(self, attr).to_list(), f)
 
     def _calc_profit(self, amount: float, rate: float) -> float:
         """ Calculates profit of a sale.

@@ -4,7 +4,6 @@ import logging
 import pandas as pd
 from os import path
 from typing import Dict, List, NoReturn, Union, Optional, Tuple
-import urllib3
 from yaml import safe_dump, safe_load
 import warnings
 
@@ -200,7 +199,7 @@ class MarketAPI(Market, ABC):
 
             data.index = pd.MultiIndex.from_tuples(data.index)      # convert to MultiIndex
             self._data = data
-            # self.save()
+            self.save()
         except ConnectionError as e:
             msg = f'Connection Error. Deferring to cached data.'
             logging.error(e)
