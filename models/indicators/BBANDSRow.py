@@ -14,7 +14,7 @@ class BBANDSRow(Indicator):
     _source = 'close'
     columns = ('upperband', 'middleband', 'lowerband')
 
-    def __init__(self, *args, threshold: float = 0.5, **kwargs):
+    def __init__(self, *args, threshold: float = 0.25, **kwargs):
         super().__init__(*args, **kwargs)
         self.threshold = threshold
 
@@ -22,7 +22,7 @@ class BBANDSRow(Indicator):
         buy = row['middleband'] - row['lowerband']
         sell = row['upperband'] - row['middleband']
 
-        buy *= self.threshold
+        buy *= 1 - self.threshold
         sell *= self.threshold
 
         buy += row['lowerband']
@@ -60,6 +60,9 @@ class BBANDSRow(Indicator):
         rate = self._extract_rate(row, candles)
 
         buy, sell = self._calculate_thresholds(row)
+
+        # TODO: scalar should be calculated as quantized distance. Rates closer to midline
+        #   should have lower strength
 
         if isnan(buy) or isnan(sell):
             return 0
