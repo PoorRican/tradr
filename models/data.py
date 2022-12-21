@@ -4,6 +4,7 @@ from os import path
 from datetime import datetime
 import yaml
 
+from core.misc import TZ
 
 TIMESTAMP_REPR_STR = '!timestamp'
 
@@ -14,7 +15,7 @@ def timestamp_representer(dumper, data):
 
 
 def timestamp_constructor(loader, node):
-    return pd.Timestamp(node.value)
+    return pd.Timestamp(node.value, tz=TZ)
 
 
 yaml.add_representer(pd.Timestamp, timestamp_representer)
