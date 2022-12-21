@@ -15,9 +15,11 @@ class IndicatorContainer(object):
 
     This can be used in `Strategy` to direct trade decisions, or can be used to indicate trends."""
     def __init__(self, indicators: Sequence[type(Indicator)], index: Optional[pd.Index] = None, lookback: int = 0,
-                 threads: int = 4):
+                 threads: int = 4, unison: bool = False):
         self.indicators: Sequence[Indicator] = [i(index, lookback) for i in indicators]
         self.threads = threads
+        self.unison: bool = unison
+        """ Optional flag used to require or disable that all `Indicator` objects return the same `Signal` """
 
     def find(self, cls: type(Indicator)) -> Union[int, 'False']:
         for i, _instance in enumerate(self.indicators):
@@ -138,7 +140,8 @@ class IndicatorContainer(object):
         else:
             signals = pd.Series([i.signal(point, candles) for i in self.indicators])
 
-        if len(signals.unique()) == 1:
+        unique = len(signals.unique())
+        if (self.unison and unique == 1) or (not self.unison and unique <= len(self.indicators) - 1):
             return Signal(signals.mode()[0])
 
         return Signal.HOLD
