@@ -10,6 +10,7 @@ import warnings
 from core.market import Market
 from core.misc import TZ
 from models import DATA_ROOT, ROOT, Trade, SuccessfulTrade
+from primitives.cache import CachedValue
 
 
 class MarketAPI(Market, ABC):
@@ -74,6 +75,13 @@ class MarketAPI(Market, ABC):
         self.auto_update = auto_update
 
         self.instances[self.id] = self
+
+        # Setup special values
+        self._fee = CachedValue(self._get_fee)
+
+    @property
+    def fee(self):
+        return self._fee()
 
     @property
     def _stale_candles(self) -> Tuple[str]:
@@ -221,9 +229,8 @@ class MarketAPI(Market, ABC):
         pass
 
     @abstractmethod
-    def get_fee(self, *args, **kwargs) -> float:
+    def _get_fee(self, *args, **kwargs) -> float:
         """ Calculate cost of a transaction
-
         """
         pass
 

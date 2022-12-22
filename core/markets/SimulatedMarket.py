@@ -33,8 +33,9 @@ class SimulatedMarket(Market):
     def post_order(self, trade: Trade) -> Union['SuccessfulTrade', bool]:
         return self._convert(trade)
 
-    def get_fee(self):
-        return self.model.get_fee()
+    @property
+    def fee(self):
+        return self.model.fee
 
     def update(self):
         self.model.update()

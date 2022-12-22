@@ -100,7 +100,7 @@ class Strategy(StoredObject, ABC):
         last_trade = self.orders.iloc[-1]
 
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
-        return gain - self.market.get_fee()
+        return gain - self.market.fee
 
     def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade):
         """ Post sale processing of trade before adding to local container. """

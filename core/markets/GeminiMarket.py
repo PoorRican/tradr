@@ -55,7 +55,7 @@ class GeminiMarket(MarketAPI):
     _SECRET_FN = "gemini_api.yml"
     _INSTANCES_FN = "gemini_instances.yml"
 
-    def get_fee(self) -> float:
+    def _get_fee(self) -> float:
         """ Retrieve current transaction fee.
 
         Notes:
@@ -79,12 +79,17 @@ class GeminiMarket(MarketAPI):
 
         """
         endpoint = '/v1/notionalvolume'     # noqa
-        response = self._post(endpoint)
+
         try:
-            return response['api_taker_fee_bps'] / 100
-        except KeyError:
-            logging.warning("`MarketAPI.calc_fee` has no value for `fee`")
-            return 0.35
+            response = self._post(endpoint)
+            try:
+                return response['api_taker_fee_bps'] / 100
+            except KeyError:
+                logging.warning("`MarketAPI.calc_fee` has no value for `fee`")
+        except ConnectionError:
+            logging.warning("Deferring to hard-coded value")
+
+        return 0.35
 
     def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
         """ Low-level function to retrieve candle data.
