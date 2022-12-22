@@ -110,8 +110,14 @@ class Plotter(object):
         # normalize amt column so that the smallest value is 1
         _min_buys = buys['amt'].min()
         _max_buys = buys['amt'].max()
+        if _min_buys == _max_buys:
+            _min_buys = 0
+
         _min_sells = sells['amt'].min()
         _max_sells = sells['amt'].max()
+        if _min_sells == _max_sells:
+            _min_sells = 0
+
         _buys = ((buys['amt'] - _min_buys) / (_max_buys - _min_buys)) + size
         _sells = ((sells['amt'] - _min_sells) / (_max_sells - _min_sells)) + size
 
