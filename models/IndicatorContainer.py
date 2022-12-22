@@ -87,13 +87,21 @@ class IndicatorContainer(object):
         return pd.concat([i.computed for i in self.indicators], axis='columns',
                          keys=[i.name for i in self.indicators])
 
-    def plot(self):
+    def plot(self, point: pd.Timestamp = None, width: str = "1d"):
         assert self.computed.index.equals(self.graph.index)
 
-        index = self.computed.index
-        plt.figure(figsize=[50, 25], dpi=250)
-        plt.hist(index, self.computed.xs('strength', axis=1, level=1).mean(axis='columns'))
-        plt.bar(index, self.computed.xs('signal', axis=1, level=1).mean(axis='columns'))
+        if point is None:
+            index = self.computed.index
+            computed = self.computed
+        else:
+            if type(point) is str:
+                point = pd.Timestamp(point)
+            delta = pd.Timedelta(width)
+            index = self.computed.loc[point - delta:point + delta]
+            computed = self.computed.loc[point - delta:point + delta]
+        plt.figure(figsize=[16, 9], dpi=150)
+        plt.plot(index, computed.xs('strength', axis=1, level=1).mean(axis='columns'))
+        plt.plot(index, computed.xs('signal', axis=1, level=1).mean(axis='columns'))
 
     def func_threads(self, func: str, *args, executor: concurrent.futures.Executor = None, **kwargs) \
             -> Sequence[concurrent.futures.Future]:
@@ -146,12 +154,7 @@ class IndicatorContainer(object):
 
         return Signal.HOLD
 
-    def _strength_threads(self, executor: concurrent.futures.Executor, point: pd.Timestamp, data: pd.DataFrame) \
-            -> Sequence[concurrent.futures.Future]:
-        """ Add function calls to `Indicator.strength()` to `executor`. """
-        return [executor.submit(indicator.strength, point, data) for indicator in self.indicators]
-
-    def strength(self, candles: pd.DataFrame, point: pd.Timestamp = None,
+    def strength(self, signal: Signal, candles: pd.DataFrame, point: pd.Timestamp = None,
                  executor: concurrent.futures.Executor = None) -> Union[float, None]:
         # TODO: ensure that market data is not too ahead of computed indicators
 
@@ -163,8 +166,8 @@ class IndicatorContainer(object):
 
         else:
             strengths = pd.Series([i.strength(point, candles) for i in self.indicators])
-
-        return strengths.mean()
+            signals = pd.Series([i.signal(point, candles) for i in self.indicators])
+            return strengths[signals == signal].mean()
 
     def calculate_all(self, candles: pd.DataFrame):
         for indicator in self.indicators:

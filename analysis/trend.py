@@ -6,7 +6,7 @@ from typing import Mapping, Optional, NoReturn
 from core import MarketAPI, TZ
 from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
 from models import IndicatorContainer
-from primitives import TrendMovement, MarketTrend
+from primitives import TrendMovement, MarketTrend, Signal
 
 
 STRONG_THRESHOLD = 3
@@ -83,8 +83,8 @@ class TrendDetector(object):
         else:
             [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
 
-    def _fetch_trends(self, point: pd.Timestamp = None,
-                      executor: concurrent.futures.Executor = None) -> TrendMovement:
+    def _fetch_trend(self, point: pd.Timestamp = None,
+                     executor: concurrent.futures.Executor = None) -> TrendMovement:
         """
 
         Args:
@@ -112,25 +112,26 @@ class TrendDetector(object):
 
         return TrendMovement(signals.mode()[0])
 
-    def _determine_scalar(self, point: Optional[pd.Timestamp] = None,
+    def _determine_scalar(self, trend: TrendMovement, point: Optional[pd.Timestamp] = None,
                           executor: concurrent.futures.Executor = None) -> int:
+        signal: Signal = Signal(trend)
         if self.threads:
             fs = []
             [fs.extend(future) for future in [
                 container.func_threads('strength', executor=executor,
                                        point=self.market.process_point(point, freq),
-                                       candles=self.candles(freq)
+                                       candles=self.candles(freq),
+                                       signal=signal
                                        ) for freq, container in self._indicators.items()]]
             results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         else:
-            values = [container.strength(self.candles(freq),
-                                         self.market.process_point(point, freq),
+            values = [container.strength(signal, self.candles(freq),
+                                         self.market.process_point(point, freq)
                                          ) for freq, container in self._indicators.items()]
             results = pd.Series(values)
 
         # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
-        # TODO: only incorporate `strength()` from outputs from consensus
-        return int(floor(results.mean())) or 1
+        return int(floor(results.mean()))
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
         """ Characterize trend magnitude (direction and strength of trend).
@@ -151,24 +152,24 @@ class TrendDetector(object):
         if not point:
             point = self.market.most_recent_timestamp
 
-        # TODO: is reusing the name going to affect original `point`?
         # remove `freq` value to prevent `KeyError`
         if hasattr(point, 'timestamp'):
             point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=TZ)
 
         if self.threads:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
-                _signals = executor.submit(self._fetch_trends, point, executor)
-                _strengths = executor.submit(self._determine_scalar, point, executor)
+                _trend = executor.submit(self._fetch_trend, point, executor)
+                concurrent.futures.wait([_trend])
+                trend = _trend.result()
 
-                concurrent.futures.wait([_signals, _strengths])
-                signal = _signals.result()
+                _strengths = executor.submit(self._determine_scalar, trend, point, executor)
+                concurrent.futures.wait([_strengths])
                 scalar = _strengths.result()
         else:
-            signal = self._fetch_trends(point)
-            scalar = self._determine_scalar(point)
+            trend = self._fetch_trend(point)
+            scalar = self._determine_scalar(trend, point)
 
-        return MarketTrend(signal, scalar=scalar)
+        return MarketTrend(trend, scalar=scalar)
 
     def calculate_all(self):
         for freq, container in self._indicators.items():

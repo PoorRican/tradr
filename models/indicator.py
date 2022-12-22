@@ -169,7 +169,7 @@ class Indicator(ABC):
         self.computed.loc[point, 'signal'] = decision
         return decision
 
-    def strength(self, point: pd.Timestamp, candles: pd.DataFrame) -> float:
+    def strength(self, point: pd.Timestamp, candles: pd.DataFrame, signal: Signal = None) -> float:
         """ Return strength from `point`.
 
         First, `computed` is checked to see if a value has been calculated. If not, strength is calculated
@@ -180,6 +180,8 @@ class Indicator(ABC):
                 Point in time to get `Signal` strength from.
             candles:
                 Available market candle data. Is needed for certain instances of `_row_strength()`.
+            signal:
+                Value to use for masking. Strengths that do not match `signal` are not included in output.
 
         Returns:
             `Signal` strength derived from `_function` at the given `point`.

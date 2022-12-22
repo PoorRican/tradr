@@ -87,7 +87,7 @@ class TrendDetectorTests(unittest.TestCase):
 
     def test_characterize(self):
         # setup mock functions
-        self.detector._fetch_trends = MagicMock()
+        self.detector._fetch_trend = MagicMock()
         self.detector._determine_consensus = MagicMock(return_value=TrendMovement.UP)
         self.detector._determine_scalar = MagicMock(return_value=1)
 
