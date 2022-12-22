@@ -278,8 +278,8 @@ class FinancialsMixin(Strategy, ABC):
     def _handle_inactive(self, row: pd.Series) -> NoReturn:
         """ Add incomplete order to `incomplete` container.
 
-        Inactivity is defined by `OscillatingStrategy.timeout` and is checked during
-        `OscillatingStrategy._oscillation()`.
+        Inactivity is defined by `OscillationMixin.timeout` and is checked during
+        `OscillationMixin._oscillation()`.
 
         Args:
             row:

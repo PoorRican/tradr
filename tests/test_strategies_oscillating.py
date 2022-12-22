@@ -7,16 +7,16 @@ from core.markets.GeminiMarket import GeminiMarket
 from core.markets.SimulatedMarket import SimulatedMarket
 from models import IndicatorContainer
 from primitives import Signal, Side
-from strategies.OscillatingStrategy import OscillatingStrategy
+from strategies.OscillationMixin import OscillationMixin
 
 
 class MainOscillatingStrategyTests(unittest.TestCase):
-    @patch("strategies.OscillatingStrategy.OscillatingStrategy.__abstractmethods__", set())
+    @patch("strategies.OscillationMixin.OscillationMixin.__abstractmethods__", set())
     def setUp(self) -> None:
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
-        self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=(), threshold=0.1, capital=100)
+        self.strategy = OscillationMixin(market=self.market,
+                                         indicators=(), threshold=0.1, capital=100)
 
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
@@ -65,12 +65,12 @@ class MainOscillatingStrategyTests(unittest.TestCase):
 
 
 class DeterminePositionTests(unittest.TestCase):
-    @patch("strategies.OscillatingStrategy.OscillatingStrategy.__abstractmethods__", set())
+    @patch("strategies.OscillationMixin.OscillationMixin.__abstractmethods__", set())
     def setUp(self) -> None:
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
-        self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=(), threshold=0.1, capital=100)
+        self.strategy = OscillationMixin(market=self.market,
+                                         indicators=(), threshold=0.1, capital=100)
                                             
     def test_point(self):
         """ Assert passed argument and default value are handled correctly """

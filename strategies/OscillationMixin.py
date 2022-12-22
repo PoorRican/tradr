@@ -9,7 +9,7 @@ from models import Indicator, IndicatorContainer
 from primitives import Signal, Side
 
 
-class OscillatingStrategy(FinancialsMixin, ABC):
+class OscillationMixin(FinancialsMixin, ABC):
     def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h',
                  threads: int = 4, lookback: int = 2, **kwargs):
         """

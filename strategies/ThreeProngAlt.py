@@ -5,11 +5,11 @@ from typing import Sequence, Union
 
 from analysis.trend import TrendDetector, STRONG_THRESHOLD
 from models.indicators import *
-from strategies.OscillatingStrategy import OscillatingStrategy
+from strategies.OscillationMixin import OscillationMixin
 from primitives import Side, TrendMovement
 
 
-class ThreeProngAlt(OscillatingStrategy):
+class ThreeProngAlt(OscillationMixin):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
 
     Foresight from `TrendDetector` is incorporated into `_calc_amount()` and `_is_profitable()` is overwritten.

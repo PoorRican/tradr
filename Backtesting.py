@@ -11,7 +11,7 @@ from typing import Union
 import logging
 
 from core import TZ
-from strategies.OscillatingStrategy import OscillatingStrategy
+from strategies.OscillationMixin import OscillationMixin
 
 
 class Backtesting(object):
@@ -23,8 +23,8 @@ class Backtesting(object):
         TODO:
             - Implement a way to store and access historical values.
     """
-    def __init__(self, strategy: OscillatingStrategy):
-        self.strategy: OscillatingStrategy = strategy
+    def __init__(self, strategy: OscillationMixin):
+        self.strategy: OscillationMixin = strategy
 
     @property
     def market(self):
