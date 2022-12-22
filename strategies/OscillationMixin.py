@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 from typing import Union, Tuple, Sequence
 
-from analysis.financials import FinancialsMixin
+from strategies.financials import FinancialsMixin
 from core import TZ
 from models import Indicator, IndicatorContainer
 from primitives import Signal, Side

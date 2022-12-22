@@ -2,7 +2,7 @@ import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from analysis.financials import FinancialsMixin
+from strategies.financials import FinancialsMixin
 from models import SuccessfulTrade
 from primitives import Side
 from strategies.strategy import Strategy
