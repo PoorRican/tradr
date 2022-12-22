@@ -67,12 +67,11 @@ class MarketAPI(Market, ABC):
             self.api_key = api_key
             self.api_secret = api_secret.encode()
 
+        self.auto_update = auto_update
         if update:
             self.update()
         else:
             self.load()
-
-        self.auto_update = auto_update
 
         self.instances[self.id] = self
 
@@ -191,23 +190,32 @@ class MarketAPI(Market, ABC):
 
     def update(self) -> None:
         """ Updates `data` with recent candle data.
+
         Notes
             Because this function takes time. It should not be called in `__init__()`
             and should be run asynchronously.
         """
+        print("Beginning update")
         self.load()
 
         try:
             _data = []
             for freq in self.valid_freqs:
-                _data.append(self.fetch_candles(freq))
+                if self._check_candle_age(freq):
+                    _candles = self.fetch_candles(freq)
+                else:
+                    print(f"Using cached candle data for {freq}")
+                    _candles = self._data.loc[freq]
+                _data.append(_candles)
 
-            data = pd.concat(_data, axis='index', keys=self.valid_freqs)
+            data = pd.concat(_data, axis='index', keys=self.valid_freqs)    # add keys
             data = self._combine_candles(data)
-
             data.index = pd.MultiIndex.from_tuples(data.index)      # convert to MultiIndex
+
             self._data = data
+
             self.save()
+            print(f"Update complete for {self.__name__}")
         except ConnectionError as e:
             msg = f'Connection Error. Deferring to cached data.'
             logging.error(e)

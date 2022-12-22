@@ -31,6 +31,8 @@ class StoredObject(ABC):
             mkdir(_dir)
 
     def save(self):
+        print(f"Beginning save for {self.__name__}")
+
         # aggregate attributes
         _literals = {}
         _df_keys: List[str, ...] = []
@@ -63,6 +65,8 @@ class StoredObject(ABC):
             with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
                 yaml.dump(getattr(self, attr).to_list(), f)
 
+        print(f"Finished saving {self.__name__}")
+
     def load(self):
         """ Load stored attributes and sequence data from instance directory onto memory.
 
@@ -70,6 +74,8 @@ class StoredObject(ABC):
             All data on memory is overwritten.
         """
         # TODO: load linked/stored indicator and market data/parameters
+        
+        print(f"Loading data for {self.__name__}")
 
         _dir = self._instance_dir
         _literals_fn = path.join(_dir, _LITERALS_FN)
@@ -108,3 +114,5 @@ class StoredObject(ABC):
                 continue
 
             # TODO: verify data checksum
+            
+        print(f"Load complete for {self.__name__}")
