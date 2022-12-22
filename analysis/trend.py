@@ -1,10 +1,10 @@
 import concurrent.futures
 from math import floor
 import pandas as pd
-from typing import Mapping, Optional, NoReturn, Union
+from typing import Mapping, Optional, NoReturn
 
 from core import MarketAPI, TZ
-from models.indicators import *
+from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
 from models import IndicatorContainer
 from primitives import TrendMovement, MarketTrend
 
