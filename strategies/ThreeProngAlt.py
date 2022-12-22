@@ -131,8 +131,8 @@ class ThreeProngAlt(OscillatingStrategy):
     @staticmethod
     def _incorrect_trade(trend, side) -> bool:
         return trend.scalar > STRONG_THRESHOLD and \
-               (trend.trend is TrendMovement.UP and side is Side.BUY) or \
-               (trend.trend is TrendMovement.DOWN and side is Side.SELL)
+               ((trend.trend is TrendMovement.UP and side is Side.BUY) or
+                (trend.trend is TrendMovement.DOWN and side is Side.SELL))
 
     def _is_profitable(self, amount: float, rate: float, side: Side,
                        extrema: Union['pd.Timestamp', str] = None) -> bool:
