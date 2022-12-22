@@ -14,7 +14,7 @@ from core import TZ
 from strategies.OscillationMixin import OscillationMixin
 
 
-class Backtesting(object):
+class Simulation(object):
     """ Class to test strategies on existing candle data.
 
     Plots market data and shows when a given strategy will decide to buy, hold, or sell.
