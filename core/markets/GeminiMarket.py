@@ -9,7 +9,7 @@ import requests
 import logging
 
 from core.MarketAPI import MarketAPI
-from core.misc import TZ
+from misc import TZ
 from models import json_to_df, Trade, SuccessfulTrade
 
 

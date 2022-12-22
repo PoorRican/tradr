@@ -7,7 +7,7 @@ import pandas as pd
 from typing import List, NoReturn
 import yaml
 
-from models import TIMESTAMP_REPR_STR, timestamp_representer, timestamp_constructor
+from misc import TZ
 
 
 _FN_EXT = ".yml"

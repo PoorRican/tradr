@@ -8,7 +8,7 @@ from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
-from core.misc import TZ
+from misc import TZ
 from models import DATA_ROOT, ROOT, Trade, SuccessfulTrade
 from primitives.cache import CachedValue
 
