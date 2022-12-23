@@ -6,7 +6,7 @@ from typing import Sequence, Union
 from analysis.trend import TrendDetector, STRONG_THRESHOLD
 from models.indicators import *
 from strategies.OscillationMixin import OscillationMixin
-from primitives import Side, TrendMovement
+from primitives import Side, TrendDirection
 
 
 class ThreeProngAlt(OscillationMixin):
@@ -105,10 +105,10 @@ class ThreeProngAlt(OscillationMixin):
             total = last_order['amt'] + incomplete['amt'].sum()
 
             # sell more during strong uptrend
-            if _trend.trend is TrendMovement.UP:
+            if _trend.trend is TrendDirection.UP:
                 return total * _more
             # sell less during strong downtrend
-            elif _trend.trend is TrendMovement.DOWN:
+            elif _trend.trend is TrendDirection.DOWN:
                 return total / _less
 
             if total > self.assets:
@@ -119,9 +119,9 @@ class ThreeProngAlt(OscillationMixin):
             amt = self.starting / rate
 
             # buy less during strong uptrend; buy more during strong downtrend
-            if _trend.trend is TrendMovement.UP:
+            if _trend.trend is TrendDirection.UP:
                 return amt / _less
-            elif _trend.trend is TrendMovement.DOWN:
+            elif _trend.trend is TrendDirection.DOWN:
                 return amt * _more
 
             if self.capital < amt * rate:
@@ -131,8 +131,8 @@ class ThreeProngAlt(OscillationMixin):
     @staticmethod
     def _incorrect_trade(trend, side) -> bool:
         return trend.scalar > STRONG_THRESHOLD and \
-               ((trend.trend is TrendMovement.UP and side is Side.BUY) or
-                (trend.trend is TrendMovement.DOWN and side is Side.SELL))
+               ((trend.trend is TrendDirection.UP and side is Side.BUY) or
+                (trend.trend is TrendDirection.DOWN and side is Side.SELL))
 
     def _is_profitable(self, amount: float, rate: float, side: Side,
                        extrema: Union['pd.Timestamp', str] = None) -> bool:
@@ -163,7 +163,7 @@ class ThreeProngAlt(OscillationMixin):
                 return False
 
             # handle sell
-            if _trend.trend == TrendMovement.UP:
+            if _trend.trend == TrendDirection.UP:
                 _min_profit = self.threshold * _trend.scalar
             else:
                 _min_profit = self.threshold

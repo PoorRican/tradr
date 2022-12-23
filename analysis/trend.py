@@ -3,10 +3,11 @@ from math import floor
 import pandas as pd
 from typing import Mapping, Optional, NoReturn
 
-from core import MarketAPI, TZ
+from core import MarketAPI
+from misc import TZ
 from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
 from models import IndicatorContainer
-from primitives import TrendMovement, MarketTrend, Signal
+from primitives import TrendDirection, MarketTrend, Signal
 
 
 STRONG_THRESHOLD = 3
@@ -84,7 +85,7 @@ class TrendDetector(object):
             [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
 
     def _fetch_trend(self, point: pd.Timestamp = None,
-                     executor: concurrent.futures.Executor = None) -> TrendMovement:
+                     executor: concurrent.futures.Executor = None) -> TrendDirection:
         """
 
         Args:
@@ -110,9 +111,9 @@ class TrendDetector(object):
                                        ) for freq, container in self._indicators.items()]
             signals = pd.Series(values)
 
-        return TrendMovement(signals.mode()[0])
+        return TrendDirection(signals.mode()[0])
 
-    def _determine_scalar(self, trend: TrendMovement, point: Optional[pd.Timestamp] = None,
+    def _determine_scalar(self, trend: TrendDirection, point: Optional[pd.Timestamp] = None,
                           executor: concurrent.futures.Executor = None) -> int:
         signal: Signal = Signal(trend)
         if self.threads:

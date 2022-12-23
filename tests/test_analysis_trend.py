@@ -2,7 +2,7 @@ import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from analysis.trend import TrendMovement, TrendDetector, MarketTrend
+from analysis.trend import TrendDirection, TrendDetector, MarketTrend
 
 
 FREQUENCIES = ('freq1', 'freq2')
@@ -88,23 +88,23 @@ class TrendDetectorTests(unittest.TestCase):
     def test_characterize(self):
         # setup mock functions
         self.detector._fetch_trend = MagicMock()
-        self.detector._determine_consensus = MagicMock(return_value=TrendMovement.UP)
+        self.detector._determine_consensus = MagicMock(return_value=TrendDirection.UP)
         self.detector._determine_scalar = MagicMock(return_value=1)
 
         trend = self.detector.characterize()
 
         self.assertIsInstance(trend, MarketTrend)
-        self.assertEqual(trend.trend, TrendMovement.UP)
+        self.assertEqual(trend.trend, TrendDirection.UP)
         self.assertEqual(trend.scalar, 1)
 
     def test_determine_consensus(self):
-        _results = (TrendMovement.UP, TrendMovement.UP, TrendMovement.CYCLE)
+        _results = (TrendDirection.UP, TrendDirection.UP, TrendDirection.CYCLE)
 
         trend = self.detector._determine_consensus(_results)
-        self.assertIsInstance(trend, TrendMovement)
+        self.assertIsInstance(trend, TrendDirection)
 
         # assert that highest occurring value is returned
-        self.assertEqual(trend, TrendMovement.UP)
+        self.assertEqual(trend, TrendDirection.UP)
 
 
 if __name__ == '__main__':

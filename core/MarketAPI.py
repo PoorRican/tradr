@@ -61,8 +61,9 @@ class MarketAPI(Market, ABC):
         """
         super().__init__(symbol, root)
 
-        if api_key and api_secret:
-            self.api_key = api_key
+        self.api_key = api_key
+        self.api_secret = api_secret
+        if api_secret is not None:
             self.api_secret = api_secret.encode()
 
         self.auto_update = auto_update
