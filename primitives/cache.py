@@ -6,22 +6,23 @@ from misc import TZ
 
 
 class CachedValue(object):
-    def __init__(self, func: Callable, *args, **kwargs):
+    def __init__(self, func: Callable = None, *args, timeout: timedelta = timedelta(hours=1), **kwargs):
+        assert issubclass(type(timeout), timedelta)
+
         self.func: Callable = func
         self.args: Tuple = args
         self.kwargs: Dict = kwargs
 
         self._value: Any = None
 
-        self.timeout = timedelta(hours=1)
+        self.timeout: timedelta = timeout
         self.last_updated = None
 
         self.update()
 
-    def __call__(self):
-        now = datetime.now(tz=TZ)
-        if self.timeout < now - self.last_updated:
-            self.last_updated = now
+    def __call__(self, point: datetime = datetime.now(tz=TZ)):
+        if self.timeout < point - self.last_updated:
+            self.last_updated = point
             return self.update()
         return self._value
 
@@ -29,10 +30,10 @@ class CachedValue(object):
         return self.func(*self.args, **self.kwargs)
 
     def update(self) -> Any:
-        self.last_updated = datetime.now(tz=TZ)
         try:
             _value = self._call()
             self._value = _value
+            self.last_updated = datetime.now(tz=TZ)
         except ConnectionError as e:
             logging.warning("Deferring to cached value")
             if self._value is None:
