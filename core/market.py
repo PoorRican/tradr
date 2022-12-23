@@ -41,8 +41,6 @@ class Market(StoredObject, ABC):
             assert symbol in self.asset_pairs
         self.symbol = symbol
 
-        self.root = root
-
     @property
     def id(self) -> str:
         return f"{self.__name__}_{self.symbol}"

@@ -8,7 +8,7 @@ TZ = timezone(TZ_NAME)
 
 
 def _project_root() -> str:
-    _root = path.join(__file__, path.pardir, path.pardir)
+    _root = path.join(__file__, path.pardir)
     return path.abspath(_root)
 
 
