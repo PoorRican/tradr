@@ -59,7 +59,7 @@ class MarketAPI(Market, ABC):
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
-        super().__init__(symbol, root)
+        super().__init__(symbol, **kwargs)
 
         self.api_key = api_key
         self.api_secret = api_secret
