@@ -8,8 +8,8 @@ from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
-from misc import TZ
-from models import DATA_ROOT, ROOT, Trade, SuccessfulTrade
+from misc import TZ, ROOT
+from models import Trade, SuccessfulTrade
 from primitives.cache import CachedValue
 
 
@@ -45,15 +45,13 @@ class MarketAPI(Market, ABC):
     instances: Dict[str, 'MarketAPI'] = {}
 
     def __init__(self, api_key: str = None, api_secret: str = None,
-                 root: str = DATA_ROOT, update=True, auto_update=True, symbol: str = None):
+                 update=True, auto_update=True, symbol: str = None, **kwargs):
         """
         Args:
             api_key:
                 API key
             api_secret:
                 API secret
-            root:
-                root directory to store candle data
             update:
                 flag to disable fetching active market data. Reads any cached file by default.
             auto_update:

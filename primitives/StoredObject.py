@@ -5,19 +5,34 @@ import numpy as np
 from os import path, mkdir
 import pandas as pd
 from typing import List, NoReturn
+from warnings import warn
 import yaml
 
-from misc import TZ
-
+from misc import TZ, DATA_ROOT
 
 _FN_EXT = ".yml"
 _LITERALS_FN = f"literals{_FN_EXT}"
+
+# Store Timestamp in YAML
+TIMESTAMP_REPR_STR = '!timestamp'
+
+
+def timestamp_representer(dumper, data):
+    return dumper.represent_scalar(TIMESTAMP_REPR_STR, str(data))
+
+
+def timestamp_constructor(loader, node):
+    return pd.Timestamp(node.value, tz=TZ)
+
 
 yaml.add_representer(pd.Timestamp, timestamp_representer)
 yaml.add_constructor(TIMESTAMP_REPR_STR, timestamp_constructor)
 
 
 class StoredObject(ABC):
+    def __init__(self, *args, root: str = DATA_ROOT, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.root = root
 
     @property
     @abstractmethod

@@ -2,35 +2,6 @@ import pandas as pd
 import requests
 from os import path
 from datetime import datetime
-import yaml
-
-from core.misc import TZ
-
-TIMESTAMP_REPR_STR = '!timestamp'
-
-
-# Store Timestamp in YAML
-def timestamp_representer(dumper, data):
-    return dumper.represent_scalar(TIMESTAMP_REPR_STR, str(data))
-
-
-def timestamp_constructor(loader, node):
-    return pd.Timestamp(node.value, tz=TZ)
-
-
-yaml.add_representer(pd.Timestamp, timestamp_representer)
-yaml.add_constructor(TIMESTAMP_REPR_STR, timestamp_constructor)
-
-
-# Manage Root
-
-def _project_root() -> str:
-    _root = path.join(__file__, path.pardir, path.pardir)
-    return path.abspath(_root)
-
-
-ROOT = _project_root()
-DATA_ROOT = f'{_project_root()}/data/'
 
 
 def json_to_df(data) -> pd.DataFrame:

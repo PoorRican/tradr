@@ -21,14 +21,13 @@ class Market(StoredObject, ABC):
     asset_pairs: Tuple[str, ...]
     columns = ('open', 'high', 'low', 'close', 'volume')
 
-    def __init__(self, symbol: str = None, root: str = None):
+    def __init__(self, symbol: str = None, **kwargs):
         """
         Args:
-            root:
-                root directory to store candle data
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
+        super().__init__(**kwargs)
         self._data = pd.DataFrame(columns=list(self.columns))
         """DataFrame: container for candle data.
         

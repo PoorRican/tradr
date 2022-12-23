@@ -7,7 +7,7 @@ import logging
 from warnings import warn
 
 from core.MarketAPI import MarketAPI
-from models import DATA_ROOT, Trade, SuccessfulTrade, add_to_df, truncate
+from models import Trade, SuccessfulTrade, add_to_df, truncate
 from primitives import Side, StoredObject
 
 
@@ -37,7 +37,7 @@ class Strategy(StoredObject, ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, market: MarketAPI, freq: str, root: str = DATA_ROOT):
+    def __init__(self, market: MarketAPI, freq: str, **kwargs):
         """
 
         Args:
@@ -51,9 +51,8 @@ class Strategy(StoredObject, ABC):
             freq:
                 Operating frequency for strategy. Both trade decisions (signals derived from `indicator` and how often
                 trading decisions are evaluated) will be derived from this frequency.
-            root:
-                Root directory to store candle data
         """
+        super().__init__(**kwargs)
         self.orders = SuccessfulTrade.container()
         """ History of successful orders performed by this strategy. Timestamps of extrema are used as indexes.
         
@@ -76,7 +75,6 @@ class Strategy(StoredObject, ABC):
 
         self.market = market
         self.freq = freq
-        self.root = root
 
     @classmethod
     def factory(cls, market: MarketAPI, params: List[Dict]):
