@@ -60,14 +60,14 @@ class Indicator(ABC):
 
         return pd.DataFrame(index=index, columns=list(columns), dtype=float)
 
-    def process(self, data: pd.DataFrame, **kwargs) -> NoReturn:
+    def process(self, candles: pd.DataFrame, **kwargs) -> NoReturn:
         """ Processes incoming `data` and populates `graph`.
 
         This function is used for computing indicator functions with existing or new data. In the future, data will be
         atomically updated with incoming data.
 
         Args:
-            data:
+            candles:
                 New candle data to process.
             **kwargs:
                 Arbitrary keyword-arguments to pass to indicator function `_function()`. These arguments override the
@@ -75,12 +75,13 @@ class Indicator(ABC):
                 trend detection on a per-instance basis.
 
         """
+        assert not candles.empty
         # TODO: make async
 
         # new or empty rows get updated
-        _index = list(data.index.values)
+        _index = list(candles.index.values)
         _index.extend(list(self.graph.values))
-        if type(data.index) == pd.DatetimeIndex:
+        if type(candles.index) == pd.DatetimeIndex:
             _index = pd.DatetimeIndex(_index)
         else:
             _index = pd.Index(_index)
@@ -95,15 +96,16 @@ class Indicator(ABC):
         params = self._parameters
         params.update(kwargs)
 
-        _output = self.__class__._function(data[self._source], **params)
-        buffer = self.container(data.index, _output)
+        _output = self.__class__._function(candles[self._source], **params)
+        buffer = self.container(candles.index, _output)
 
         # TODO: atomically update graph
         # self.graph = pd.concat([self.graph, buffer.loc[updates.values]])
         self.graph = buffer
 
-    def calculate_all(self, candles: pd.DataFrame) -> NoReturn:
-        assert len(self.graph)
+    def compute(self, candles: pd.DataFrame) -> NoReturn:
+        assert not self.graph.empty
+        assert not candles.empty
 
         # TODO: vectorizing computation across columns should provide greater speed increase
         # TODO: setting `raw` flag to true should increase speed according to docs, however,

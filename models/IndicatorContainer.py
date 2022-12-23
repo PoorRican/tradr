@@ -172,4 +172,4 @@ class IndicatorContainer(object):
     def calculate_all(self, candles: pd.DataFrame):
         for indicator in self.indicators:
             indicator.process(candles)
-            indicator.calculate_all(candles)
+            indicator.compute(candles)
