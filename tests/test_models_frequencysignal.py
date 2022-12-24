@@ -38,11 +38,13 @@ class BaseFrequencySignal(unittest.TestCase):
             self.assertTrue(i.computed.equals(self.computed))
 
     def test_homogenous_signal(self):
+        """ Homogenous values should always return true regardless of `unison` """
         # assert `signal` returns signal when all values are the same
         idx = self.index[2]
         self.assertEqual(Signal.SELL, self.obj.signal(idx))
 
     def test_homogenous_call(self):
+        """ Homogenous values should always return true regardless of `unison` """
         # assert call returns `signal` when all values are the same
         # assert call returns correct `strength` when all values are the same
         idx = self.index[2]
@@ -51,6 +53,7 @@ class BaseFrequencySignal(unittest.TestCase):
         self.assertEqual(-4, strength)
 
     def test_ambiguous_signal(self):
+        """ Ambiguous values should always return `HOLD` regardless of `unison` """
         idx = self.index[2]
         self.assertEqual(Signal.SELL, self.obj.signal(idx))
         self.obj.indicators[1].computed.loc[idx, 'signal'] = 0
@@ -59,6 +62,7 @@ class BaseFrequencySignal(unittest.TestCase):
         self.assertEqual(Signal.HOLD, self.obj.signal(idx))
 
     def test_ambiguous_call(self):
+        """ Ambiguous values should always return `HOLD` regardless of `unison` """
         # assert call returns `HOLD` when one value is different
         # assert call returns correct `strength` when one value is different
         idx = self.index[2]
@@ -71,7 +75,8 @@ class BaseFrequencySignal(unittest.TestCase):
         self.assertTrue(isnan(strength))
 
 
-class TestUnisonHomogenous(BaseFrequencySignal):
+class TestUnisonTrue(BaseFrequencySignal):
+    """ Assert that heterogeneous values return `CYCLE` when `unison=True`. """
     def setUp(self):
         super().setUp()
 
@@ -96,6 +101,7 @@ class TestUnisonHomogenous(BaseFrequencySignal):
 
 
 class TestUnisonFalse(BaseFrequencySignal):
+    """ Assert that heterogeneous values return True when `unison=False`. """
     def setUp(self):
         super().setUp()
 

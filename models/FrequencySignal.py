@@ -1,7 +1,6 @@
 import concurrent.futures
 from math import nan
 import pandas as pd
-import pandas as pd
 from typing import List, NoReturn, Union
 
 from core import MarketAPI
@@ -11,23 +10,23 @@ from primitives import Signal
 
 
 class FrequencySignal(object):
-    """ Functor which returns trade signal at given point.
+    """ Functor which derives a discrete trade signal from a given point of market data.
 
     Trade signal is derived from a combination of `Indicator` objects. Signal can be determined from
     a majority of returned outputs or in unison, controlled by the `unison` flag. In essence, `FrequencySignal`
-    serves as a container for `Indicator` objects.
+    serves as a container for `Indicator` objects. This can be used in `Strategy` to direct trade decisions, or can be
+    used to indicate trends.
 
-    New incoming data is processed by `update()`
+    New incoming data is processed by `update()`.
     """
-    market: MarketAPI
-    freq: str
+    market: 'MarketAPI'
     indicators: List[Indicator]
     threads: int
     executor: concurrent.futures.Executor
     last_update: Union['pd.Timestamp', None]
 
     def __init__(self, market: 'MarketAPI', freq: 'str', indicators: List[Indicator],
-                 unison: bool = False, update: bool = True,
+                 unison: bool = False, update: bool = True, lookback: int = 1,
                  executor: concurrent.futures.Executor = None, threads: int = 16):
         """ Set up container for `Indicator`
 
@@ -40,26 +39,37 @@ class FrequencySignal(object):
                 Instantiated `Indicator` objects
             unison: (optional)
                 Flag to require a consensus among all indicators.
+            update: (optional)
+                Flag to auto-compute upon startup. Uses existing market data. Also, disables checking of stale data.
+            lookback: (optional)
+                Number of signal repetition to convert signal time-series data to `Signal` objects.
             executor: (optional)
                 Should be passed if called alongside other `FrequencySignal` objects.
             threads:
                 Total number of threads to use. `0` disables threading and is meant to be passed while debugging.
         """
-        assert freq in market.valid_freqs
-
         self.market = market
-        self.freq = freq
         self.threads = threads
         self.indicators = indicators
         self.unison = unison
+        self.lookback = lookback
         self.executor = executor
         self.last_update = None
+        self.freq = freq
 
         self._update = update
         if update:
             self.update()
 
-        self.timeout = pd.Timedelta(self.market.translate_period(freq))
+        self.timeout = pd.Timedelta(self.market.translate_period(self.freq))
+
+    def __getitem__(self, item: Union[int, type(Indicator)]) -> Indicator:
+        if type(item) == int:
+            return self.indicators[item]
+        elif issubclass(item, Indicator):
+            return self.indicators[self.find(item)]
+        else:
+            raise ValueError("Incorrect type for `item` argument")
 
     @property
     def candles(self):

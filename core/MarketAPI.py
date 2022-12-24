@@ -9,7 +9,7 @@ import warnings
 
 from core.market import Market
 from misc import TZ, ROOT
-from models import Trade, SuccessfulTrade
+from models.trades import Trade, SuccessfulTrade
 from primitives.cache import CachedValue
 
 

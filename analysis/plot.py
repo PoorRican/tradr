@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Mapping, Sequence, Union, NoReturn
 
-from models import IndicatorContainer
+from models import FrequencySignal
 from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
 from strategies import ThreeProngAlt
 
@@ -41,7 +41,7 @@ class Plotter(object):
     def _plot_indicators(self, endpoints: Mapping[str, 'pd.Timestamp']):
         macd = 2
         stoch = 3
-        container: IndicatorContainer = self.indicators
+        container: FrequencySignal = self.indicators
 
         container[BBANDSRow].plot(self.subplots, **endpoints, render=False)
         container[MACDRow].plot(self.subplots, macd, **endpoints, render=False)

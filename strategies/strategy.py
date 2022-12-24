@@ -37,7 +37,7 @@ class Strategy(StoredObject, ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, market: MarketAPI, freq: str, **kwargs):
+    def __init__(self, market: 'MarketAPI', freq: str, **kwargs):
         """
 
         Args:
@@ -77,7 +77,7 @@ class Strategy(StoredObject, ABC):
         self.freq = freq
 
     @classmethod
-    def factory(cls, market: MarketAPI, params: List[Dict]):
+    def factory(cls, market: 'MarketAPI', params: List[Dict]):
         instances = []
         # TODO: markets need to by dynamically loaded
         for i in params:
@@ -272,7 +272,7 @@ class Strategy(StoredObject, ABC):
 
         # Develop trend detector data
         if hasattr(self, 'detector'):
-            self.detector.calculate_all()
+            self.detector.update()
 
     @abstractmethod
     def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:

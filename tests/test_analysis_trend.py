@@ -3,11 +3,12 @@ import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from analysis.trend import TrendDirection, TrendDetector, MarketTrend
+from analysis.trend import TrendDetector
+from primitives import TrendDirection, MarketTrend
 from misc import TZ
 
 
-FREQUENCIES = ('freq1', 'freq2', 'freq3')
+FREQUENCIES = ('15m', '1hr', '6h')
 
 
 @patch('models.Indicator.__abstractmethods__', set())
@@ -30,28 +31,29 @@ class TrendDetectorTests(unittest.TestCase):
             self.market = cls()
 
         TrendDetector._frequencies = FREQUENCIES
-        self.detector = TrendDetector(self.market)
-
         self.index = pd.date_range(pd.Timestamp.now(), tz=TZ, freq='15m', periods=3)
+        self.market.translate_period = MagicMock(return_value=FREQUENCIES[-1])
+        self.detector = TrendDetector(self.market)
 
     def test_init_args(self):
         self.assertEqual(tuple(self.detector._indicators.keys()), TrendDetector._frequencies)
 
     def test_develop(self):
         # mock indicators.develop(). Return predetermined df depending on freq
-        self.detector.candles = MagicMock(return_value='get_candles')
+        _candles = pd.DataFrame([0, 1, 2])
+        self.detector.candles = MagicMock(return_value=_candles)
         for container in self.detector._indicators.values():
-            container.develop = MagicMock()
+            container.update = MagicMock()
 
         # assert that develop was called n-times, where n == len(frequencies)
-        self.detector.develop()
+        self.detector.update()
         for container in self.detector._indicators.values():
-            container.develop.assert_called_with('get_candles')
+            container.update.assert_called_with(_candles)
 
         # get assertion error when no indicators
         with self.assertRaises(AssertionError):
             self.detector._indicators = []
-            self.detector.develop()
+            self.detector.update()
 
     def test_determine_scalar(self):
         idx = self.index[-1]        # this is a placeholder since returned value is mock

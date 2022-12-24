@@ -1,20 +1,21 @@
 from abc import ABC
 from datetime import datetime
 import pandas as pd
-from typing import Union, Tuple, Sequence
+from typing import Union, Tuple, List
 
 from strategies.financials import FinancialsMixin
-from core import TZ
-from models import Indicator, IndicatorContainer
 from primitives import Signal, Side
+from misc import TZ
+from models import Indicator, FrequencySignal
 
 
 class OscillationMixin(FinancialsMixin, ABC):
-    def __init__(self, indicators: Sequence[type(Indicator)], timeout: str = '6h',
+    def __init__(self, indicators: List[Indicator], timeout: str = '6h',
                  threads: int = 4, lookback: int = 2, **kwargs):
         """
         Args:
             indicators:
+                Instances of indicators to use for determining market positions.
             timeout:
                 Timeout frequency for sequential buy orders. Used by `_oscillation()` frequency.
             **kwargs:
@@ -25,7 +26,7 @@ class OscillationMixin(FinancialsMixin, ABC):
         self.threads = threads
         self.lookback = lookback
         self.timeout: str = timeout
-        self.indicators: IndicatorContainer = IndicatorContainer(indicators, lookback=self.lookback)
+        self.indicators: FrequencySignal = FrequencySignal(self, indicators)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.
@@ -82,11 +83,10 @@ class OscillationMixin(FinancialsMixin, ABC):
         if not point:
             point = self.market.most_recent_timestamp
 
+        signal: Signal = self.indicators.signal(point)
         if self._remaining <= 1:
             pass
-
-        signal: Signal = self.indicators.signal(self.candles, point)
-        if self._oscillation(signal, point=point):
+        elif self._oscillation(signal, point=point):
             signal: Side = Side(signal)
             rate = self._calc_rate(point, signal)
             amount = self._calc_amount(point, signal)

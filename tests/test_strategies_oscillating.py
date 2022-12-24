@@ -5,7 +5,7 @@ from pytz import timezone
 
 from core.markets.GeminiMarket import GeminiMarket
 from core.markets.SimulatedMarket import SimulatedMarket
-from models import IndicatorContainer
+from models import FrequencySignal
 from primitives import Signal, Side
 from strategies.OscillationMixin import OscillationMixin
 
@@ -16,11 +16,11 @@ class MainOscillatingStrategyTests(unittest.TestCase):
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
         self.strategy = OscillationMixin(market=self.market,
-                                         indicators=(), threshold=0.1, capital=100)
+                                         indicators=[], threshold=0.1, capital=100)
 
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
-        self.assertIsInstance(self.strategy.indicators, IndicatorContainer)
+        self.assertIsInstance(self.strategy.indicators, FrequencySignal)
         # TODO: assert `indicators` param gets passed to `IndicatorContainer`
 
     def test_check_timeout(self):
@@ -70,7 +70,7 @@ class DeterminePositionTests(unittest.TestCase):
         mark = GeminiMarket(update=False)
         self.market = SimulatedMarket(mark)
         self.strategy = OscillationMixin(market=self.market,
-                                         indicators=(), threshold=0.1, capital=100)
+                                         indicators=[], threshold=0.1, capital=100)
                                             
     def test_point(self):
         """ Assert passed argument and default value are handled correctly """

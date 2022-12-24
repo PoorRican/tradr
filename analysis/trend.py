@@ -6,7 +6,7 @@ from typing import Mapping, Optional, NoReturn, Union
 from core import MarketAPI
 from misc import TZ
 from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
-from models import IndicatorContainer
+from models import FrequencySignal
 from primitives import TrendDirection, MarketTrend, Signal
 
 
@@ -41,7 +41,7 @@ class TrendDetector(object):
         self.threads = threads
         self.lookback = lookback
 
-        self._indicators: Mapping[str, 'IndicatorContainer'] = self._create_indicator_container()
+        self._indicators: Mapping[str, 'FrequencySignal'] = self._create_indicator_container()
         """ Store indicator data as a mapping where each key is a frequency.
         """
 
@@ -53,11 +53,12 @@ class TrendDetector(object):
     def computed(self):
         return pd.concat([i.computed for i in self._indicators.values()], keys=self._frequencies)
 
-    def _create_indicator_container(self) -> Mapping[str, 'IndicatorContainer']:
+    def _create_indicator_container(self) -> Mapping[str, 'FrequencySignal']:
         indicators = {}
         for freq in self._frequencies:
-            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow],
-                                                  lookback=self.lookback, threads=self.threads)
+            indicators[freq] = FrequencySignal(self.market, freq,
+                                               [MACDRow(), BBANDSRow(), STOCHRSIRow()],
+                                               update=False, threads=self.threads)
         return indicators
 
     def candles(self, frequency: str) -> pd.DataFrame:
@@ -70,7 +71,7 @@ class TrendDetector(object):
         # fetch via multi-index
         return self.market.candles(frequency)
 
-    def develop(self) -> NoReturn:
+    def update(self) -> NoReturn:
         """ Compute all indicator functions across all frequencies using existing candle data.
 
         Since smaller frequencies will have values with `NaN`, `get_candles()` must be called to drop
@@ -85,12 +86,12 @@ class TrendDetector(object):
         if self.threads:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
                 fs = []
-                [fs.extend(executor.submit(container.develop,
+                [fs.extend(executor.submit(container.update,
                                            self.candles(freq)
                                            ).result()) for freq, container in self._indicators.items()]
                 concurrent.futures.wait(fs)
         else:
-            [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
+            [container.update(self.candles(freq)) for freq, container in self._indicators.items()]
 
     def _fetch_trend(self, point: pd.Timestamp,
                      executor: concurrent.futures.Executor = None,
@@ -120,8 +121,7 @@ class TrendDetector(object):
                                        ) for freq, container in self._indicators.items()]]
             signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         else:
-            values = [container.signal(self.candles(freq),
-                                       self.market.process_point(point, freq),
+            values = [container.signal(self.market.process_point(point, freq),
                                        ) for freq, container in self._indicators.items()]
             signals = pd.Series(values)
 
@@ -148,8 +148,7 @@ class TrendDetector(object):
                                        ) for freq, container in self._indicators.items()]]
             results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         else:
-            values = [container.strength(signal, self.candles(freq),
-                                         self.market.process_point(point, freq)
+            values = [container.strength(signal, self.market.process_point(point, freq)
                                          ) for freq, container in self._indicators.items()]
             results = pd.Series(values)
 
@@ -200,7 +199,3 @@ class TrendDetector(object):
             scalar = self._determine_scalar(trend, point)
 
         return MarketTrend(trend, scalar=scalar)
-
-    def calculate_all(self):
-        for freq, container in self._indicators.items():
-            container.calculate_all(self.candles(freq))
