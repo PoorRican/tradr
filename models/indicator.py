@@ -47,7 +47,8 @@ class Indicator(ABC):
         self.computed = self.container(index, columns=('signal', 'strength'))
 
     @classmethod
-    def container(cls, index: pd.Index = None, data: Tuple = None, columns: Sequence[str] = None) -> pd.DataFrame:
+    def container(cls, index: Union['pd.Index', Sequence] = None, data: Sequence = None,
+                  columns: Sequence[str] = None) -> pd.DataFrame:
         if data:
             _data = [i.values.T for i in data]
             _dict = {}

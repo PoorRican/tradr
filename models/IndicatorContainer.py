@@ -80,12 +80,17 @@ class IndicatorContainer(object):
 
     @property
     def graph(self) -> pd.DataFrame:
-        return pd.concat([i.graph for i in self.indicators], axis='columns')
+        _graph = pd.concat([i.graph for i in self.indicators], axis='columns',
+                           keys=[i.name for i in self.indicators])
+        _graph.columns = pd.MultiIndex.from_tuples(_graph.columns)
+        return _graph
 
     @property
     def computed(self) -> pd.DataFrame:
-        return pd.concat([i.computed for i in self.indicators], axis='columns',
-                         keys=[i.name for i in self.indicators])
+        _computed = pd.concat([i.computed for i in self.indicators], axis='columns',
+                              keys=[i.name for i in self.indicators])
+        _computed.columns = pd.MultiIndex.from_tuples(_computed.columns)
+        return _computed
 
     def plot(self, point: pd.Timestamp = None, width: str = "1d"):
         assert self.computed.index.equals(self.graph.index)
@@ -160,14 +165,16 @@ class IndicatorContainer(object):
 
         # initialize executor or run on single thread
         if self.threads:
-            self.func_threads('strength', executor=executor,
-                              point=point, candles=candles)
-            return None
+
+            fs = self.func_threads('strength', executor=executor,
+                                   point=point, candles=candles)
+            strengths = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
 
         else:
             strengths = pd.Series([i.strength(point, candles) for i in self.indicators])
-            signals = pd.Series([i.signal(point, candles) for i in self.indicators])
-            return strengths[signals == signal].mean()
+
+        signals = pd.Series([i.signal(point, candles) for i in self.indicators])
+        return strengths[signals == signal].mean()
 
     def calculate_all(self, candles: pd.DataFrame):
         for indicator in self.indicators:

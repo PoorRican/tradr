@@ -1,7 +1,7 @@
 import concurrent.futures
-from math import floor
+from math import floor, nan
 import pandas as pd
-from typing import Mapping, Optional, NoReturn
+from typing import Mapping, Optional, NoReturn, Union
 
 from core import MarketAPI
 from misc import TZ
@@ -45,6 +45,14 @@ class TrendDetector(object):
         """ Store indicator data as a mapping where each key is a frequency.
         """
 
+    @property
+    def graph(self):
+        return pd.concat([i.graph for i in self._indicators.values()], keys=self._frequencies)
+
+    @property
+    def computed(self):
+        return pd.concat([i.computed for i in self._indicators.values()], keys=self._frequencies)
+
     def _create_indicator_container(self) -> Mapping[str, 'IndicatorContainer']:
         indicators = {}
         for freq in self._frequencies:
@@ -84,18 +92,24 @@ class TrendDetector(object):
         else:
             [container.develop(self.candles(freq)) for freq, container in self._indicators.items()]
 
-    def _fetch_trend(self, point: pd.Timestamp = None,
-                     executor: concurrent.futures.Executor = None) -> TrendDirection:
+    def _fetch_trend(self, point: pd.Timestamp,
+                     executor: concurrent.futures.Executor = None,
+                     raw: bool = False) -> Union['TrendDirection', 'pd.Series']:
         """
 
         Args:
             point:
+                Point in time to evaluate.
             executor:
+            raw (False):
+                Option flag to return values of all indicators instead of a singular value. This would be used for
+                masking or building a 3d-array of candles for given point. This defaults to false.
 
         Notes:
 
         Returns:
-
+            If `raw` is True, a `pd.Series` of `Signal` values are returned. Otherwise, the mode of such a `Series` is
+            returned.
         """
         if self.threads:
             fs = []
@@ -111,11 +125,19 @@ class TrendDetector(object):
                                        ) for freq, container in self._indicators.items()]
             signals = pd.Series(values)
 
+        if raw:
+            return signals
+
         return TrendDirection(signals.mode()[0])
 
-    def _determine_scalar(self, trend: TrendDirection, point: Optional[pd.Timestamp] = None,
-                          executor: concurrent.futures.Executor = None) -> int:
+    def _determine_scalar(self, trend: TrendDirection, point: Optional[pd.Timestamp],
+                          executor: concurrent.futures.Executor = None) -> float:
         signal: Signal = Signal(trend)
+
+        # no strength should be returned if there is no price movement
+        if signal == Signal.HOLD:
+            return nan
+
         if self.threads:
             fs = []
             [fs.extend(future) for future in [
@@ -131,8 +153,15 @@ class TrendDetector(object):
                                          ) for freq, container in self._indicators.items()]
             results = pd.Series(values)
 
+        _row = pd.DataFrame([container.computed.loc[self.market.process_point(point, freq)]
+                             for freq, container in self._indicators.items()])
+        _signals = _row.xs('signal', axis='columns', level=1)
+        signals: pd.Series = _signals.mode(axis='columns')[0]
+        assert signals.shape == results.shape
+        signals.index = [i for i in range(len(results))]
+
         # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
-        return int(floor(results.mean()))
+        return int(floor(results[signals == signal].dropna().mean()))
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
         """ Characterize trend magnitude (direction and strength of trend).
