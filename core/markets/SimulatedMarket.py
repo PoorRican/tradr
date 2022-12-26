@@ -14,7 +14,7 @@ class SimulatedMarket(Market):
         - Only accept trade 50% of the time. This adds realism to simulation.
     """
 
-    def __init__(self, model: MarketAPI):
+    def __init__(self, model: MarketAPI = None):
         super().__init__()
 
         self.model = model

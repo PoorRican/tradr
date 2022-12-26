@@ -10,7 +10,7 @@ from models import Indicator, FrequencySignal
 
 
 class OscillationMixin(FinancialsMixin, ABC):
-    def __init__(self, indicators: List[Indicator], timeout: str = '6h',
+    def __init__(self, indicators: List[Indicator], timeout: str = '6h', freq: str = None,
                  threads: int = 4, lookback: int = 2, **kwargs):
         """
         Args:
@@ -21,12 +21,12 @@ class OscillationMixin(FinancialsMixin, ABC):
             **kwargs:
                 Keyword Args passed to `FinancialsMixin.__init__()`
         """
-        super().__init__(**kwargs)
+        super().__init__(freq=freq, **kwargs)
 
         self.threads = threads
         self.lookback = lookback
         self.timeout: str = timeout
-        self.indicators: FrequencySignal = FrequencySignal(self, indicators)
+        self.indicators: FrequencySignal = FrequencySignal(self.market, freq, indicators)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.

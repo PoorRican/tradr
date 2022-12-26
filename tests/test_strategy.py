@@ -17,7 +17,7 @@ class BaseStrategyTestCase(unittest.TestCase):
     @patch('strategies.strategy.Strategy.__abstractmethods__', set())
     def setUp(self):
         self.market = create_autospec(Market, instance=True)
-        self.strategy = Strategy(self.market)
+        self.strategy = Strategy(self.market, freq='')
 
 
 class GenericStrategyTests(BaseStrategyTestCase):
@@ -40,13 +40,11 @@ class GenericStrategyTests(BaseStrategyTestCase):
     @patch('strategies.strategy.Strategy.__abstractmethods__', set())
     def test_init_load(self):
         """ Check that passing `load=True` calls load function. """
-        self.skipTest('Load argument passed to `Strategy.__init__()` is deprecated as of v0.2.0-alpha.')
-
         with patch.object(Strategy, 'load', side_effect=RuntimeError) as _mock_load:
-            Strategy(self.market, load=False)
+            Strategy(self.market, freq='', load=False)
 
         with patch.object(Strategy, 'load') as _mock_load:
-            Strategy(self.market, load=True)
+            Strategy(self.market, freq='', load=True)
             _mock_load.assert_called_once()
 
     def test_instance_dir(self):
@@ -195,116 +193,30 @@ class StrategyCalcAllTests(BaseStrategyTestCase):
         self.strategy.indicators = MagicMock()
         self.market._data = MagicMock()
 
-        with patch.object(self.strategy.indicators, 'develop') as _mock_develop:
-            self.assertIsNone(self.strategy.calculate_all())
-            _mock_develop.assert_called_once_with(self.market._data)
+        self.assertIsNone(self.strategy.calculate_all())
+        self.strategy.indicators.compute.assert_called_once()
 
     def test_only_detector(self):
         """ Test when `detector` are the only available instance attribute. """
         self.strategy.detector = MagicMock()
         self.market._data = MagicMock()
 
-        with patch.object(self.strategy.detector, 'develop') as _mock_develop:
-            self.assertIsNone(self.strategy.calculate_all())
-            _mock_develop.assert_called_once()
+        self.assertIsNone(self.strategy.calculate_all())
+        self.strategy.detector.update.assert_called_once()
 
     def test_high_level(self):
         """ Test when instance has both `indicators` and `detector` attributes. """
         self.strategy.detector = MagicMock()
-        self.strategy.detector.develop = MagicMock()
+        self.strategy.detector.update = MagicMock()
 
         self.strategy.indicators = MagicMock()
-        self.strategy.indicators.develop = MagicMock()
+        self.strategy.indicators.compute = MagicMock()
 
         self.market._data = MagicMock()
 
         self.assertIsNone(self.strategy.calculate_all())
-        self.strategy.indicators.develop.assert_called_once_with(self.market._data)
-        self.strategy.detector.develop.assert_called_once()
-
-
-class StrategySerializationTests(BaseStrategyTestCase):
-    """ Ensure `save()` and `load()` methods work as expected. """
-    # data should be verified in temp dir
-    def setUp(self):
-        super().setUp()
-        self.root = f"/tmp/data_{dt.datetime.now()}"
-        with patch(f"strategies.strategy.DATA_ROOT", self.root) as _root:
-            mkdir(_root)
-
-            self.strategy.root = _root
-
-        self.market.__name__ = 'MockMarket'
-        self.market.symbol = 'MockSymbol'
-
-    def tearDown(self):
-        super().setUp()
-
-        rmtree(self.root)
-
-    def test_save(self):
-        # test an arbitrary sequenced attribute
-        _attr_name = 'mock_df'
-        setattr(self.strategy, _attr_name, pd.DataFrame())
-        # TODO: shouldn't an error be raised when adding a frame that didn't previously exist
-
-        self.strategy.save()
-
-        _dir = self.strategy._instance_dir
-        dirs = ('literals.yml', 'orders.yml', 'failed_orders.yml',
-                f"{_attr_name}.yml",)
-        _files = listdir(self.strategy._instance_dir)
-        for i in _files:
-            self.assertIn(i, dirs)
-        for i in dirs:
-            self.assertIn(i, _files)
-
-        # TODO: verify file contents
-
-    def test_load_invalid(self):
-        """ Test when an attribute that isn't part of instance attributes tries to get added via
-        literal storage. """
-        self.strategy.save()
-
-        _fn = path.join(self.strategy._instance_dir, 'literals.yml')
-        with open(_fn, 'r') as f:
-            literals: dict = safe_load(f)
-
-        self.assertIsInstance(literals, dict)
-        literals['test'] = 'test'
-        with open(_fn, 'w') as f:
-            safe_dump(literals, f)
-
-        with self.assertRaises(AssertionError):
-            self.strategy.load()
-
-    def test_load(self):
-        # test an arbitrary sequenced attribute
-        _attr_name = 'mock_series'
-        setattr(self.strategy, _attr_name, pd.Series())
-        # TODO: shouldn't an error be raised when adding a frame that didn't previously exist
-
-        self.strategy.save()
-        _arbitrary_series_data = {1: 'test'}
-        with open(path.join(self.strategy._instance_dir, f"{_attr_name}.yml"), 'w') as f:
-            safe_dump(_arbitrary_series_data, f)
-
-        _fn = path.join(self.strategy._instance_dir, 'literals.yml')
-        with open(_fn, 'r') as f:
-            literals: dict = safe_load(f)
-        self.assertIsInstance(literals, dict)
-        literals['root'] = 'test'
-        with open(_fn, 'w') as f:
-            safe_dump(literals, f)
-
-        self.strategy.load()
-        self.assertTrue(hasattr(self.strategy, 'root'))
-        self.assertEqual(getattr(self.strategy, 'root'), 'test')
-
-        # test arbitrary data
-        self.assertEqual(_arbitrary_series_data, getattr(self.strategy, _attr_name).to_dict())
-
-        # TODO: test that dataframes are properly loaded
+        self.strategy.indicators.compute.assert_called_once()
+        self.strategy.detector.update.assert_called_once()
 
 
 if __name__ == '__main__':

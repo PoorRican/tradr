@@ -4,7 +4,7 @@ import pandas as pd
 from typing import NoReturn, Tuple, Union
 from warnings import warn
 
-from core import TZ
+from misc import TZ
 from models import SuccessfulTrade
 from primitives import Side
 from strategies import Strategy

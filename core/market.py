@@ -1,7 +1,9 @@
 from abc import abstractmethod, ABC
 from os import path
+from pathlib import Path
+
 import pandas as pd
-from typing import Tuple
+from typing import Tuple, NoReturn
 
 from primitives import StoredObject
 
@@ -37,9 +39,13 @@ class Market(StoredObject, ABC):
             Should have `source` and `freq` set via the `DataFrame.attrs` convention.
         """
 
-        if symbol:
-            assert symbol in self.asset_pairs
+        self._check_symbol(symbol)
         self.symbol = symbol
+
+    @classmethod
+    def _check_symbol(cls, symbol: str) -> NoReturn:
+        if symbol:
+            assert symbol in cls.asset_pairs
 
     @property
     def id(self) -> str:
@@ -59,8 +65,8 @@ class Market(StoredObject, ABC):
         pass
 
     @property
-    def _instance_dir(self) -> str:
-        return path.join(self.root, f"{self.id}")
+    def _instance_dir(self) -> Path:
+        return Path(self.root, f"{self.id}")
 
     @abstractmethod
     def translate_period(self, freq):

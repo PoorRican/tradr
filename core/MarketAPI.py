@@ -8,7 +8,7 @@ from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
-from misc import TZ, ROOT
+from misc import TZ
 from models.trades import Trade, SuccessfulTrade
 from primitives.cache import CachedValue
 
@@ -45,7 +45,7 @@ class MarketAPI(Market, ABC):
     instances: Dict[str, 'MarketAPI'] = {}
 
     def __init__(self, api_key: str = None, api_secret: str = None,
-                 update=True, auto_update=True, symbol: str = None, **kwargs):
+                 update=True, auto_update=True, symbol: str = None, fee: float = None, **kwargs):
         """
         Args:
             api_key:
@@ -155,27 +155,33 @@ class MarketAPI(Market, ABC):
         return self._data.loc[freq]
 
     @classmethod
-    def restore(cls, fn: str = None) -> NoReturn:
+    def restore(cls, fn: str = None, **kwargs) -> NoReturn:
         """ Generates several instances of `GeminiMarket` based on config file.
 
         Paired with `snapshot()`.
+
+        Args:
+            fn:
+
+            kwargs:
+                Passed down to `cls.__init__()`
         """
         if fn is None:
             fn = cls._INSTANCES_FN
 
-        with open(path.join(ROOT, cls._SECRET_FN), 'r') as f:
+        with open(path.join(cls.root, cls._SECRET_FN), 'r') as f:
             secrets = safe_load(f)
 
-        with open(path.join(ROOT, fn), 'r') as f:
+        with open(path.join(cls.root, fn), 'r') as f:
             params = safe_load(f)
 
         for i in params:
-            instance = cls(secrets['key'], secrets['secret'], **i, update=False)
+            instance = cls(secrets['key'], secrets['secret'], **i, update=False, **kwargs)
             instance.load()
             cls.instances[instance.id] = instance
 
     @classmethod
-    def snapshot(cls, fn: str = None):
+    def snapshot(cls, fn: str = None) -> NoReturn:
         if fn is None:
             fn = cls._INSTANCES_FN
 
@@ -184,7 +190,7 @@ class MarketAPI(Market, ABC):
             lines.append({'symbol': i.symbol})
             i.save()
 
-        with open(path.join(ROOT, fn), 'w') as f:
+        with open(path.join(cls.root, fn), 'w') as f:
             safe_dump(lines, f)
 
     def update(self) -> None:
@@ -244,7 +250,7 @@ class MarketAPI(Market, ABC):
     def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
         combined = pd.concat([self._data, incoming])
         combined = combined[~combined.index.duplicated(keep="first")]         # drop rows w/ duplicated index
-        return combined
+        return combined.sort_index()
 
     def _repair_candles(self, data: pd.DataFrame, freq: str) -> pd.DataFrame:
         """ Fill in missing values for candle data via interpolation. """

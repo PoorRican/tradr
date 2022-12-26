@@ -10,14 +10,18 @@ from primitives import Signal, Side
 from strategies.OscillationMixin import OscillationMixin
 
 
-class MainOscillatingStrategyTests(unittest.TestCase):
-    @patch("strategies.OscillationMixin.OscillationMixin.__abstractmethods__", set())
+class BaseOscillatingStratTests(unittest.TestCase):
+    @patch("strategies.OscillationMixin.__abstractmethods__", set())
     def setUp(self) -> None:
-        mark = GeminiMarket(update=False)
+        freq = '15m'
+        mark = MagicMock(spec=GeminiMarket)
         self.market = SimulatedMarket(mark)
-        self.strategy = OscillationMixin(market=self.market,
+        self.market.translate_period = MagicMock(return_value=freq)
+        self.strategy = OscillationMixin(market=self.market, freq=freq,
                                          indicators=[], threshold=0.1, capital=100)
 
+
+class MainOscillatingStrategyTests(BaseOscillatingStratTests):
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
         self.assertIsInstance(self.strategy.indicators, FrequencySignal)
@@ -64,14 +68,7 @@ class MainOscillatingStrategyTests(unittest.TestCase):
         self.assertTrue(self.strategy._oscillation(Signal.BUY))
 
 
-class DeterminePositionTests(unittest.TestCase):
-    @patch("strategies.OscillationMixin.OscillationMixin.__abstractmethods__", set())
-    def setUp(self) -> None:
-        mark = GeminiMarket(update=False)
-        self.market = SimulatedMarket(mark)
-        self.strategy = OscillationMixin(market=self.market,
-                                         indicators=[], threshold=0.1, capital=100)
-                                            
+class DeterminePositionTests(BaseOscillatingStratTests):
     def test_point(self):
         """ Assert passed argument and default value are handled correctly """
 
@@ -82,7 +79,7 @@ class DeterminePositionTests(unittest.TestCase):
         import datetime as dt
         index = [pd.Timestamp(dt.datetime.now() - dt.timedelta(hours=i)) for i in range(10)]
         index.reverse()
-        self.market.data = pd.DataFrame({'blah': 'blah'}, index=index)
+        self.market._data = pd.DataFrame({'blah': 'blah'}, index=index)
         self.assertEqual(self.strategy._determine_position(), (Signal.SELL, index[-1]))
         self.assertEqual(self.strategy._determine_position(point=index[5]), (Signal.SELL, index[5]))
 
