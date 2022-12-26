@@ -86,12 +86,10 @@ class TrendDetector(object):
         if self.threads:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
                 fs = []
-                [fs.extend(executor.submit(container.update,
-                                           self.candles(freq)
-                                           ).result()) for freq, container in self._indicators.items()]
+                [fs.extend(executor.submit(container.update).result()) for container in self._indicators.values()]
                 concurrent.futures.wait(fs)
         else:
-            [container.update(self.candles(freq)) for freq, container in self._indicators.items()]
+            [container.update() for container in self._indicators.values()]
 
     def _fetch_trend(self, point: pd.Timestamp,
                      executor: concurrent.futures.Executor = None,

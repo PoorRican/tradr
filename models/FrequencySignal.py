@@ -12,6 +12,9 @@ from primitives import Signal
 class FrequencySignal(object):
     """ Functor which derives a discrete trade signal from a given point of market data.
 
+    This object serves to wrap several `Indicator` objects then handle their concurrent outputs, and connect them to
+    a market object.
+
     Trade signal is derived from a combination of `Indicator` objects. Signal can be determined from
     a majority of returned outputs or in unison, controlled by the `unison` flag. In essence, `FrequencySignal`
     serves as a container for `Indicator` objects. This can be used in `Strategy` to direct trade decisions, or can be
@@ -57,7 +60,7 @@ class FrequencySignal(object):
         self.last_update = None
         self.freq = freq
 
-        self._update = update
+        self._update: bool = update
         if update:
             self.update()
 
@@ -111,16 +114,22 @@ class FrequencySignal(object):
             strength = nan
         return signal, strength
 
-    def update(self, candles: pd.DataFrame = None):
-        """ Process new, incoming data. """
-        if candles is None:
-            candles = self.candles
-        self.last_update = candles.index[-1]
-        self.process(candles)
-        self.compute(candles)
+    def update(self):
+        """ Process new, incoming data.
 
-    def compute(self, data: pd.DataFrame, buffer: bool = False,
-                executor: concurrent.futures.Executor = None) -> NoReturn:
+        This serves as a wrapper for both `_process()` and `_compute()`, which both serve to populate the
+        `graph` and `computed` DataFrame containers respectively. Therefore, both functions shouldn't be
+        called outside.
+
+        Buffering should be accomplished here since each instance directly accesses candle data and there
+        shouldn't be any redundant access to specific frequency candle data outside of this functor.
+        """
+        self.last_update = self.candles.index[-1]
+        self._process(self.candles)
+        self._compute(self.candles)
+
+    def _compute(self, data: pd.DataFrame, buffer: bool = False,
+                 executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Compute signals from indicator graph data
 
         Used to update `self.computed` which is dedicated to store all indicator data and should only be updated
@@ -154,8 +163,8 @@ class FrequencySignal(object):
         else:
             [i.compute(_buffer) for i in self.indicators]
 
-    def process(self, data: pd.DataFrame, buffer: bool = False,
-                executor: concurrent.futures.Executor = None) -> NoReturn:
+    def _process(self, data: pd.DataFrame, buffer: bool = False,
+                 executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Generate indicator data for all available given candle data.
 
         Used to update `self.graph` which is dedicated to store all indicator data and should only be updated

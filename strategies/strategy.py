@@ -268,7 +268,7 @@ class Strategy(StoredObject, ABC):
 
         # Develop indicator/oscillator data
         if hasattr(self, 'indicators'):
-            self.indicators.compute(self.candles)
+            self.indicators.update()
 
         # Develop trend detector data
         if hasattr(self, 'detector'):

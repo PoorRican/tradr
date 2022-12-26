@@ -48,7 +48,7 @@ class TrendDetectorTests(unittest.TestCase):
         # assert that develop was called n-times, where n == len(frequencies)
         self.detector.update()
         for container in self.detector._indicators.values():
-            container.update.assert_called_with(_candles)
+            container.update.assert_called()
 
         # get assertion error when no indicators
         with self.assertRaises(AssertionError):

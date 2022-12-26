@@ -1,11 +1,6 @@
-import datetime as dt
-from os import mkdir, listdir
-from os import path
 import pandas as pd
-from shutil import rmtree
 import unittest
 from unittest.mock import patch, MagicMock, create_autospec
-from yaml import safe_load, safe_dump
 
 from core.market import Market
 from models import SuccessfulTrade, Trade
@@ -194,7 +189,7 @@ class StrategyCalcAllTests(BaseStrategyTestCase):
         self.market._data = MagicMock()
 
         self.assertIsNone(self.strategy.calculate_all())
-        self.strategy.indicators.compute.assert_called_once()
+        self.strategy.indicators.update.assert_called_once()
 
     def test_only_detector(self):
         """ Test when `detector` are the only available instance attribute. """
@@ -207,15 +202,12 @@ class StrategyCalcAllTests(BaseStrategyTestCase):
     def test_high_level(self):
         """ Test when instance has both `indicators` and `detector` attributes. """
         self.strategy.detector = MagicMock()
-        self.strategy.detector.update = MagicMock()
-
         self.strategy.indicators = MagicMock()
-        self.strategy.indicators.compute = MagicMock()
 
         self.market._data = MagicMock()
 
         self.assertIsNone(self.strategy.calculate_all())
-        self.strategy.indicators.compute.assert_called_once()
+        self.strategy.indicators.update.assert_called_once()
         self.strategy.detector.update.assert_called_once()
 
 
