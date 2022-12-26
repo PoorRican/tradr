@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 from os import path, mkdir
+from pathlib import Path
 import pandas as pd
 from typing import List, NoReturn
 from warnings import warn
@@ -28,22 +29,27 @@ yaml.add_constructor(TIMESTAMP_REPR_STR, timestamp_constructor)
 
 
 class StoredObject(ABC):
-    def __init__(self, *args, root: str = DATA_ROOT, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.root = root
+    root: str = DATA_ROOT
+    __name__ = 'StoredObject'
+
+    def __init__(self, *args, load: bool = False, **kwargs):
+        super().__init__()
+
+        if load:
+            self.load()
 
     @property
     @abstractmethod
-    def _instance_dir(self):
+    def _instance_dir(self) -> Path:
         pass
 
     @staticmethod
-    def _create_dir(_dir: str) -> NoReturn:
+    def _create_dir(_dir: Path) -> NoReturn:
         if not path.exists(_dir):
             # TODO: implement mode for read/write access controls
             mkdir(_dir)
 
-    def save(self):
+    def save(self) -> NoReturn:
         print(f"Beginning save for {self.__name__}")
 
         # aggregate attributes
@@ -80,7 +86,7 @@ class StoredObject(ABC):
 
         print(f"Finished saving {self.__name__}")
 
-    def load(self):
+    def load(self) -> NoReturn:
         """ Load stored attributes and sequence data from instance directory onto memory.
 
         Notes
@@ -91,11 +97,11 @@ class StoredObject(ABC):
         print(f"Loading data for {self.__name__}")
 
         _dir = self._instance_dir
-        _literals_fn = path.join(_dir, _LITERALS_FN)
-        if not path.exists(_dir):
-            mkdir(_dir)
+        _literals_fn = Path(_dir, _LITERALS_FN)
+        if not _dir.exists():
+            _dir.mkdir(parents=True)
             return None
-        elif not path.exists(_literals_fn):
+        elif not _literals_fn.exists():
             return None
 
         # load `_literals`. Literals should be verified (ie: not be a function)
@@ -103,7 +109,7 @@ class StoredObject(ABC):
             _literals: dict = yaml.full_load(f)
             for k, v in _literals.items():
                 # verify data
-                assert k in self.__dict__.keys()
+                assert hasattr(self, k)
                 assert type(v) in (str, int, float)
 
                 setattr(self, k, v)
@@ -113,7 +119,7 @@ class StoredObject(ABC):
             if _t not in (pd.DataFrame, pd.Series):
                 continue
             try:
-                with open(path.join(_dir, f"{k}.yml"), 'r') as f:
+                with open(Path(_dir, f"{k}.yml"), 'r') as f:
                     container = yaml.full_load(f)
                     if _t == pd.DataFrame:
                         _seq = pd.DataFrame.from_dict(container, orient="index")
