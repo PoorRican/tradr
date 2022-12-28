@@ -6,7 +6,8 @@ from misc import TZ
 
 
 class CachedValue(object):
-    def __init__(self, func: Callable = None, *args, timeout: timedelta = timedelta(hours=1), **kwargs):
+    def __init__(self, func: Callable = None, *args, timeout: timedelta = timedelta(hours=1),
+                 default: Any = None, **kwargs):
         assert issubclass(type(timeout), timedelta)
 
         self.func: Callable = func
@@ -14,6 +15,7 @@ class CachedValue(object):
         self.kwargs: Dict = kwargs
 
         self._value: Any = None
+        self.default = None
 
         self.timeout: timedelta = timeout
         self.last_updated = None
@@ -36,6 +38,9 @@ class CachedValue(object):
             self.last_updated = datetime.now(tz=TZ)
         except ConnectionError as e:
             logging.warning("Deferring to cached value")
-            if self._value is None:
-                raise e
+            if self._value is not None:
+                return self._value
+            elif self.default is not None:
+                return self.default
+            raise e
         return self._value

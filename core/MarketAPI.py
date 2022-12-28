@@ -58,6 +58,10 @@ class MarketAPI(Market, ABC):
                 Flag to disable auto-updating. Prevents checking of stale candle data.
             symbol:
                 Asset pair symbol to use for trading for this instance.
+            fee:
+                Default value for fee if `CachedValue` is unable to fetch data.
+            kwargs:
+                Remaining keyword arguments are passed to `MarketAPI.__init__()`
         """
         super().__init__(symbol, **kwargs)
 
@@ -75,7 +79,7 @@ class MarketAPI(Market, ABC):
         self.instances[self.id] = self
 
         # Setup special values
-        self._fee = CachedValue(self._get_fee)
+        self._fee = CachedValue(self._get_fee, default=fee)
 
     @property
     def fee(self):
