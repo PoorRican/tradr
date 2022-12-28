@@ -88,8 +88,11 @@ class Plotter(object):
         if render:
             plt.show()
 
-    def _plot_money(self, index: pd.Index, assets: pd.Series, capital: pd.Series):
+    def _plot_money(self, index: pd.Index, assets: pd.Series, capital: pd.Series) -> NoReturn:
         """ Plot acquired capital and assets """
+        if assets.empty:
+            return
+
         sec = self.subplots[1]
         _last = assets.iloc[-1]
         _assets: pd.Series = assets.copy()
@@ -106,7 +109,9 @@ class Plotter(object):
         _capital = _capital.interpolate()
         sec2.plot(_capital.index, _capital.values, color="green")
 
-    def _plot_decisions(self, orders: pd.DataFrame):
+    def _plot_decisions(self, orders: pd.DataFrame) -> NoReturn:
+        if orders.empty:
+            return
         """ Plot trade enter and exit locations. """
         figure = self.subplots[Location.PRIMARY]
         size = 10
