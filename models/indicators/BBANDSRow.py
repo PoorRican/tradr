@@ -16,6 +16,7 @@ class BBANDSRow(Indicator):
 
     def __init__(self, *args, threshold: float = 0.25, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.threshold = threshold
 
     def _calculate_thresholds(self, row: Union['pd.Series', 'pd.DataFrame']) -> Tuple[float, float]:

@@ -1,7 +1,7 @@
 import logging
-from math import ceil
+from math import ceil, isnan, nan
 import pandas as pd
-from typing import Sequence, Union
+from typing import Sequence, Union, List
 
 from analysis.trend import TrendDetector, STRONG_THRESHOLD
 from models.indicators import *
@@ -50,7 +50,7 @@ class ThreeProngAlt(OscillationMixin):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        _indicators: Sequence = [BBANDSRow, MACDRow, STOCHRSIRow]
+        _indicators: List = [BBANDSRow(), MACDRow(), STOCHRSIRow()]
         super().__init__(indicators=_indicators, **kwargs)
 
         self.detector = TrendDetector(self.market, threads=self.threads)
@@ -89,14 +89,16 @@ class ThreeProngAlt(OscillationMixin):
         return self.candles.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
-        if self.orders.empty:
+        _trend = self.detector.characterize(extrema)
+        if isnan(_trend.scalar):
+            return nan
+        elif self.orders.empty:
             assert side == Side.BUY
             last_order = {'amt': 0, 'side': Side.SELL}
         else:
             last_order = self.orders.iloc[-1]
 
         rate = self._calc_rate(extrema, side)
-        _trend = self.detector.characterize(extrema)
         _more = 1 + _trend.scalar / 10
         _less = ceil(_trend.scalar / 2)
         if side == Side.SELL:
@@ -145,6 +147,9 @@ class ThreeProngAlt(OscillationMixin):
         uptrend.
         """
         assert side in (Side.BUY, Side.SELL)
+
+        if isnan(amount):
+            return False
 
         _trend = self.detector.characterize(extrema)
 

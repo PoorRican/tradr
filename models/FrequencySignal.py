@@ -105,9 +105,11 @@ class FrequencySignal(object):
             point = pd.Timestamp(point, tz=TZ)
         if self._update and self.timeout > point - self.last_update:
             self.update()
-        signal = self.signal(point)
-        _strengths = pd.Series([i.strength(point, self.candles) for i in self.indicators])
-        signals = pd.Series([i.signal(point, self.candles) for i in self.indicators])
+
+        _point = self.market.process_point(point, freq=self.freq)
+        signal = self.signal(_point)
+        _strengths = pd.Series([i.strength(_point, self.candles) for i in self.indicators])
+        signals = pd.Series([i.signal(_point, self.candles) for i in self.indicators])
         if signal != Signal.HOLD:
             strength = _strengths[signals == signal].mean()
         else:

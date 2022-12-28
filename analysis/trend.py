@@ -86,7 +86,8 @@ class TrendDetector(object):
         if self.threads:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
                 fs = []
-                [fs.extend(executor.submit(container.update).result()) for container in self._indicators.values()]
+                for container in self._indicators.values():
+                    fs.append(executor.submit(container.update))
                 concurrent.futures.wait(fs)
         else:
             [container.update() for container in self._indicators.values()]
@@ -150,10 +151,16 @@ class TrendDetector(object):
                                          ) for freq, container in self._indicators.items()]
             results = pd.Series(values)
 
-        _row = pd.DataFrame([container.computed.loc[self.market.process_point(point, freq)]
-                             for freq, container in self._indicators.items()])
+        _aggregated = [container.computed.loc[self.market.process_point(point, freq)]
+                       for freq, container in self._indicators.items()]
+        # hack to convert df returned by indexing of str instead of timestamp for '1D'
+        for i, obj in enumerate(_aggregated):
+            if type(_aggregated[i]) is pd.DataFrame:
+                _aggregated[i] = obj.iloc[0]
+
+        _row = pd.concat(_aggregated, axis='columns').T
         _signals = _row.xs('signal', axis='columns', level=1)
-        signals: pd.Series = _signals.mode(axis='columns')[0]
+        signals: pd.Series = _signals.stack()
         assert signals.shape == results.shape
         signals.index = [i for i in range(len(results))]
 

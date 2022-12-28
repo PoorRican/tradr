@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from typing import Union
 import logging
 
-from core import TZ
+from misc import TZ
 from strategies.OscillationMixin import OscillationMixin
 
 

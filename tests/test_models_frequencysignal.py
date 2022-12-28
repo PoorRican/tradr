@@ -22,6 +22,8 @@ class BaseFrequencySignal(unittest.TestCase):
         self.obj: FrequencySignal = FrequencySignal(self.market, '15m', indicators, update=False)
 
         self.index = pd.date_range(pd.Timestamp.now(), tz=TZ, freq='15m', periods=3)
+        self.idx = self.index[-1]
+        self.market.process_point = MagicMock(return_value=self.idx)
         self.graph = pd.DataFrame({'first': [0, 1, 2], 'second': [3, 4, 5]},
                                   index=self.index)
         self.computed = pd.DataFrame({'signal': [0, 1, -1], 'strength': [-2, -3, -4]},
@@ -40,37 +42,29 @@ class BaseFrequencySignal(unittest.TestCase):
     def test_homogenous_signal(self):
         """ Homogenous values should always return true regardless of `unison` """
         # assert `signal` returns signal when all values are the same
-        idx = self.index[2]
-        self.assertEqual(Signal.SELL, self.obj.signal(idx))
+        self.assertEqual(Signal.SELL, self.obj.signal(self.idx))
 
     def test_homogenous_call(self):
         """ Homogenous values should always return true regardless of `unison` """
         # assert call returns `signal` when all values are the same
         # assert call returns correct `strength` when all values are the same
-        idx = self.index[2]
-        signal, strength = self.obj(idx)
+        signal, strength = self.obj(self.idx)
         self.assertEqual(Signal.SELL, signal)
         self.assertEqual(-4, strength)
 
     def test_ambiguous_signal(self):
         """ Ambiguous values should always return `HOLD` regardless of `unison` """
-        idx = self.index[2]
-        self.assertEqual(Signal.SELL, self.obj.signal(idx))
-        self.obj.indicators[1].computed.loc[idx, 'signal'] = 0
-        self.obj.indicators[2].computed.loc[idx, 'signal'] = 1
+        self.obj.indicators[1].computed.loc[self.idx, 'signal'] = Signal.HOLD
+        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = Signal.BUY
 
-        self.assertEqual(Signal.HOLD, self.obj.signal(idx))
+        self.assertEqual(Signal.HOLD, self.obj.signal(self.idx))
 
     def test_ambiguous_call(self):
         """ Ambiguous values should always return `HOLD` regardless of `unison` """
-        # assert call returns `HOLD` when one value is different
-        # assert call returns correct `strength` when one value is different
-        idx = self.index[2]
-        self.assertEqual(Signal.SELL, self.obj.signal(idx))
-        self.obj.indicators[1].computed.loc[idx, 'signal'] = 1
-        self.obj.indicators[2].computed.loc[idx, 'signal'] = 0
+        self.obj.indicators[1].computed.loc[self.idx, 'signal'] = Signal.BUY
+        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = Signal.HOLD
 
-        signal, strength = self.obj(idx)
+        signal, strength = self.obj(self.idx)
         self.assertEqual(Signal.HOLD, signal)
         self.assertTrue(isnan(strength))
 
@@ -84,18 +78,14 @@ class TestUnisonTrue(BaseFrequencySignal):
 
     def test_heterogeneous_signal(self):
         # assert signal returns `HOLD` when one value is different
-        idx = self.index[2]
-        self.assertEqual(Signal.SELL, self.obj.signal(idx))
-        self.obj.indicators[2].computed.loc[idx, 'signal'] = 1
+        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = Signal.BUY
 
-        self.assertEqual(Signal.HOLD, self.obj.signal(idx))
+        self.assertEqual(Signal.HOLD, self.obj.signal(self.idx))
 
     def test_heterogeneous_call(self):
-        idx = self.index[2]
-        self.assertEqual(Signal.SELL, self.obj.signal(idx))
-        self.obj.indicators[2].computed.loc[idx, 'signal'] = 1
+        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = Signal.BUY
 
-        signal, strength = self.obj(idx)
+        signal, strength = self.obj(self.idx)
         self.assertEqual(Signal.HOLD, signal)
         self.assertTrue(isnan(strength))
 
@@ -106,20 +96,18 @@ class TestUnisonFalse(BaseFrequencySignal):
         super().setUp()
 
         self.obj.unison = False
-        self.idx = self.index[2]
 
     def test_heterogeneous_signal(self):
         # assert signal returns signal when one value is different
-        self.assertEqual(Signal.SELL, self.obj.signal(self.idx))
-        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = 1
+        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = Signal.BUY
 
-        signal, strength = self.obj(self.idx)
+        signal = self.obj.signal(self.idx)
         self.assertEqual(Signal.SELL, signal)
 
     def test_heterogeneous_call(self):
         # assert call returns `HOLD` when one value is different
         # assert call returns correct averaged `strength` when one value is different
-        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = 1
+        self.obj.indicators[2].computed.loc[self.idx, 'signal'] = Signal.BUY
         self.obj.indicators[1].computed.loc[self.idx, 'strength'] = 4
 
         signal, strength = self.obj(self.idx)
