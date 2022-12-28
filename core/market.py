@@ -1,5 +1,4 @@
 from abc import abstractmethod, ABC
-from os import path
 from pathlib import Path
 
 import pandas as pd
@@ -66,7 +65,7 @@ class Market(StoredObject, ABC):
 
     @property
     def _instance_dir(self) -> Path:
-        return Path(self.root, f"{self.id}")
+        return Path(self.root, self.id)
 
     @abstractmethod
     def translate_period(self, freq):
@@ -77,3 +76,8 @@ class Market(StoredObject, ABC):
             https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#timeseries-offset-aliases
         """
         pass
+
+    def assert_monotonic_increasing(self):
+        """ Asserts that all candle data has monotonically increasing indexes """
+        for freq in self.valid_freqs:
+            assert self.candles(freq).index.is_monotonic_increasing
