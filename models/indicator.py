@@ -130,6 +130,10 @@ class Indicator(ABC):
         A look-back has been implemented which checks the previous row, to see both signals are equal. This is to
         prevent both false-positives and add a delay to "catch" optimal price movements.
 
+        Notes:
+            This function should not be used for iteration and should only be used as a wrapper for `_row_strength()`
+            for given timestamp.
+
         Args:
             point:
                 Point in time to get `Signal` from.
@@ -172,19 +176,21 @@ class Indicator(ABC):
         self.computed.loc[point, 'signal'] = decision
         return decision
 
-    def strength(self, point: pd.Timestamp, candles: pd.DataFrame, signal: Signal = None) -> float:
+    def strength(self, point: pd.Timestamp, candles: pd.DataFrame) -> float:
         """ Return strength from `point`.
 
         First, `computed` is checked to see if a value has been calculated. If not, strength is calculated
         from `graph`.
+
+        Notes:
+            This function should not be used for iteration and should only be used as a wrapper for `_row_strength()`
+            for given timestamp.
 
         Args:
             point:
                 Point in time to get `Signal` strength from.
             candles:
                 Available market candle data. Is needed for certain instances of `_row_strength()`.
-            signal:
-                Value to use for masking. Strengths that do not match `signal` are not included in output.
 
         Returns:
             `Signal` strength derived from `_function` at the given `point`.

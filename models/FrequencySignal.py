@@ -209,6 +209,34 @@ class FrequencySignal(object):
 
         return [executor.submit(getattr(indicator, func), *args, **kwargs) for indicator in self.indicators]
 
+    @staticmethod
+    def _conflicting_signals(signals: pd.Series) -> bool:
+        """ Return `True` if `signals` contains both BUY AND SELL.
+
+        Notes:
+            It might be smart to define a signals as a discreet object which contains mundane instance
+            methods such as these.
+        """
+        return Signal.BUY in signals.values and Signal.SELL in signals.values
+
+    def _consensus(self, signals: pd.Series) -> bool:
+        """ Determines if there is sufficient consensus from given `signals`.
+
+        `unison` flag is taken into account.
+
+        Returns:
+            True if signals agree, otherwise False
+        """
+        unique = len(signals.unique())
+        if self.unison and unique == 1:
+            pass
+        elif not self.unison and unique <= len(self.indicators) - 1 and \
+                not self._conflicting_signals(signals):
+            pass
+        else:
+            return False
+        return True
+
     def signal(self, point: pd.Timestamp = None,
                executor: concurrent.futures.Executor = None) -> Union['Signal', None]:
         """ Infer signals from indicators.
@@ -243,8 +271,7 @@ class FrequencySignal(object):
         else:
             signals = pd.Series([i.signal(point, self.candles) for i in self.indicators])
 
-        unique = len(signals.unique())
-        if (self.unison and unique == 1) or (not self.unison and unique <= len(self.indicators) - 1):
+        if self._consensus(signals):
             return Signal(signals.mode()[0])
 
         return Signal.HOLD
@@ -252,6 +279,8 @@ class FrequencySignal(object):
     def strength(self, signal: Signal, point: pd.Timestamp = None,
                  executor: concurrent.futures.Executor = None) -> Union[float, None]:
         # TODO: ensure that market data is not too ahead of computed indicators
+        if signal is Signal.HOLD:
+            return nan
 
         # initialize executor or run on single thread
         if self.threads:
