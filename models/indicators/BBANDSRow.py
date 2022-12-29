@@ -1,4 +1,4 @@
-from math import isnan
+from math import isnan, nan
 import pandas as pd
 from talib import BBANDS
 from typing import Union, Tuple
@@ -55,9 +55,6 @@ class BBANDSRow(Indicator):
             return Signal.HOLD
 
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> float:
-        """ Determine strength of Trend """
-        assert len(self.graph)
-
         rate = self._extract_rate(row, candles)
 
         buy, sell = self._calculate_thresholds(row)
@@ -66,7 +63,7 @@ class BBANDSRow(Indicator):
         #   should have lower strength
 
         if isnan(buy) or isnan(sell):
-            return 0
+            return nan
         elif rate <= buy:
             lower = row['lowerband']
             diff = buy - lower
@@ -83,7 +80,7 @@ class BBANDSRow(Indicator):
             if rate < upper + diff:
                 return 2
             return 3
-        return 0
+        return nan
 
     def plot(self, *args, **kwargs):
         primary_idx = 0

@@ -119,6 +119,17 @@ class Indicator(ABC):
 
     @abstractmethod
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> Signal:
+        """ Determine strength of Trend
+
+        Notes:
+            For the sake of speed, no assertions or other superfluous value checks should be called in this function.
+            Any verification should be performed before and outside of this function. Also, verification should only
+            occur once, and not be repeated unless candle data is updated.
+
+        TODO:
+            - Convert this function to only accept a point in time, since `candles` is now accessible from `Indicator`
+                object.
+        """
         pass
 
     def signal(self, point: pd.Timestamp, candles: pd.DataFrame) -> Signal:
@@ -211,6 +222,22 @@ class Indicator(ABC):
 
     @abstractmethod
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
+        """ Determine strength of "trend".
+
+        Returns:
+            When corresponding signal is either `BUY` or `SELL`, returned value should be 1 through 4, corresponding
+            to perceived strength of trade signal. Value should never be 0. Instead, `nan` is returned in the absence
+            of a trade signal.
+
+        Notes:
+            For the sake of speed, no assertions or other superfluous value checks should be called in this function.
+            Any verification should be performed before and outside of this function. Also, verification should only
+            occur once, and not be repeated unless candle data is updated.
+
+        TODO:
+            - Convert this function to only accept a point in time, since `candles` is now accessible from `Indicator`
+                object.
+        """
         pass
 
     def plot(self, figure: Sequence[Figure], index: int, reindex: pd.Index = None, color=to_rgba('cyan', .1),

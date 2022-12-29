@@ -1,4 +1,4 @@
-from math import fabs, isnan, ceil
+from math import fabs, isnan, ceil, nan
 import pandas as pd
 from talib import STOCHRSI
 from typing import Union
@@ -47,8 +47,13 @@ class STOCHRSIRow(Indicator):
         k = row['fastk']
         d = row['fastd']
 
+        if hasattr(k, '__iter__'):
+            k = k[0]
+        if hasattr(d, '__iter__'):
+            d = d[0]
+
         val = fabs(k - d)
 
         if isnan(val) or (not self.overbought(d, k) and not self.oversold(d, k)):
-            return 0
-        return ceil(val / 5)
+            return nan
+        return ceil(val / 4) or 1

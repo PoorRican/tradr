@@ -1,5 +1,5 @@
 import concurrent.futures
-from math import floor, nan
+from math import ceil, nan
 import pandas as pd
 from typing import Mapping, Optional, NoReturn, Union
 
@@ -111,7 +111,7 @@ class TrendDetector(object):
             If `raw` is True, a `pd.Series` of `Signal` values are returned. Otherwise, the mode of such a `Series` is
             returned.
         """
-        if self.threads:
+        if self.threads and executor is not None:
             fs = []
             [fs.extend(future) for future in [
                 container.func_threads('signal', executor=executor,
@@ -123,6 +123,9 @@ class TrendDetector(object):
             values = [container.signal(self.market.process_point(point, freq),
                                        ) for freq, container in self._indicators.items()]
             signals = pd.Series(values)
+
+            if signals.hasnans:
+                raise RuntimeError(f"Computed indicator data for `TrendDetector` does not exist for {point}")
 
         if raw:
             return signals
@@ -137,35 +140,39 @@ class TrendDetector(object):
         if signal == Signal.HOLD:
             return nan
 
-        if self.threads:
+        # `results` holds return values of strength
+        if self.threads and executor is not None:
             fs = []
             [fs.extend(future) for future in [
                 container.func_threads('strength', executor=executor,
                                        point=self.market.process_point(point, freq),
                                        candles=self.candles(freq),
-                                       signal=signal
                                        ) for freq, container in self._indicators.items()]]
             results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
         else:
-            values = [container.strength(signal, self.market.process_point(point, freq)
-                                         ) for freq, container in self._indicators.items()]
-            results = pd.Series(values)
+            signals = []
+            strengths = []
+            for freq, container in self._indicators.items():
+                _point = self.market.process_point(point, freq)
+                _row = container.computed.loc[_point]
 
-        _aggregated = [container.computed.loc[self.market.process_point(point, freq)]
-                       for freq, container in self._indicators.items()]
-        # hack to convert df returned by indexing of str instead of timestamp for '1D'
-        for i, obj in enumerate(_aggregated):
-            if type(_aggregated[i]) is pd.DataFrame:
-                _aggregated[i] = obj.iloc[0]
+                # hack to convert df to series returned when indexing w/ str instead of timestamp when '1D'
+                if type(_row) is pd.DataFrame:
+                    _row = _row.iloc[0]
+                _strengths = _row.xs('strength', axis='index', level=1)
+                _signals = _row.xs('signal', axis='index', level=1)
+                signals.append(_signals)
+                strengths.append(_strengths)
 
-        _row = pd.concat(_aggregated, axis='columns').T
-        _signals = _row.xs('signal', axis='columns', level=1)
-        signals: pd.Series = _signals.stack()
-        assert signals.shape == results.shape
-        signals.index = [i for i in range(len(results))]
+            signals = pd.concat(signals, axis='index', ignore_index=True)
+            strengths = pd.concat(strengths, axis='index', ignore_index=True)
+            assert signals.shape == strengths.shape
 
-        # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
-        return int(floor(results[signals == signal].dropna().mean()))
+            # TODO: implement scalar weight where longer frequencies more heavily influence scalar value
+            _mean = strengths[signals == signal].dropna().mean()
+            if _mean < 1:
+                return 1
+            return _mean
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
         """ Characterize trend magnitude (direction and strength of trend).
@@ -190,7 +197,8 @@ class TrendDetector(object):
         if hasattr(point, 'timestamp'):
             point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=TZ)
 
-        if self.threads:
+        # temporarily disable multithreading to fix masking of `strength` on a high level
+        if self.threads and False:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
                 _trend = executor.submit(self._fetch_trend, point, executor)
                 concurrent.futures.wait([_trend])

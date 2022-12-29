@@ -283,7 +283,7 @@ class FrequencySignal(object):
             return nan
 
         # initialize executor or run on single thread
-        if self.threads:
+        if self.threads and False:
             self.func_threads('strength', executor=executor,
                               point=point, candles=self.candles)
             return None
@@ -291,7 +291,11 @@ class FrequencySignal(object):
         else:
             strengths = pd.Series([i.strength(point, self.candles) for i in self.indicators])
             signals = pd.Series([i.signal(point, self.candles) for i in self.indicators])
-            return strengths[signals == signal].mean()
+
+            _mean = strengths[signals == signal].mean()
+            if _mean < 1:
+                return 1
+            return _mean
 
     def find(self, cls: type(Indicator)) -> Union[int, 'False']:
         for i, _instance in enumerate(self.indicators):

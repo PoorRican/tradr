@@ -69,8 +69,6 @@ class MACDRow(Indicator):
             return Signal.HOLD
 
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], *args, **kwargs) -> float:
-        assert len(self.graph)
-
         signal = row['macdsignal']
         macd = row['macd']
 
