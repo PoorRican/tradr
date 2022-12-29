@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Mapping, Sequence, Union, NoReturn
 
+from misc import TZ
 from models import FrequencySignal
 from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
 from strategies import ThreeProngAlt
@@ -60,7 +61,7 @@ class Plotter(object):
         """
         if start:
             if type(start) is str:
-                point = pd.Timestamp(start)
+                point = pd.Timestamp(start, tz=TZ)
             else:
                 point = start
             delta = pd.Timedelta(width)
