@@ -90,17 +90,20 @@ class ThreeProngAlt(OscillationMixin):
 
     def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         _trend = self.detector.characterize(extrema)
+
+        # default to a scalar of 1 during `CYCLE` since future cannot be determined.
         if isnan(_trend.scalar):
-            return nan
-        elif self.orders.empty:
+            _trend.scalar = 1
+
+        if self.orders.empty:
             assert side == Side.BUY
             last_order = {'amt': 0, 'side': Side.SELL}
         else:
             last_order = self.orders.iloc[-1]
 
         rate = self._calc_rate(extrema, side)
-        _more = 1 + _trend.scalar / 10
-        _less = ceil(_trend.scalar / 2)
+        _more = 1 + (_trend.scalar / 10)
+        _less = 1 - (_trend.scalar / 10)
         if side == Side.SELL:
             incomplete = self._check_unpaired(rate)
 
@@ -159,6 +162,7 @@ class ThreeProngAlt(OscillationMixin):
             return False
 
         if side == Side.BUY:
+            # TODO: add delay after sell. Take strength into account.
             return True
         else:
             # prevent false positive from incomplete buys
