@@ -141,4 +141,5 @@ class Plotter(object):
         if len(sells) > 0:
             figure.scatter(sells.index, sells['rate'], _sells * scalar, marker="v", color='green')
         if len(self.model.failed_orders) > 0:
-            figure.scatter(self.model.failed_orders.index, self.model.failed_orders['rate'], color="black")
+            figure.scatter(self.model.failed_orders.index, self.model.failed_orders['rate'],
+                           color=to_rgba("white", 0.4))
