@@ -57,8 +57,8 @@ class FutureTrade(Trade):
     point: pd.Timestamp
     load: Any = None
 
-    def __bool__(self):
-        return self.attempt
+    def __bool__(self) -> bool:
+        return bool(self.attempt)
 
     def _trade(self):
         return Trade(self.amt, self.rate, self.side)
