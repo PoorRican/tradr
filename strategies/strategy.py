@@ -127,10 +127,25 @@ class Strategy(StoredObject, ABC):
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
 
-        This method is the main interface method.
+
+        Notes:
+            This method is the main interface method for automated trading. This function called
+            `_determine_position()`, which returns a `FutureTrade` if a trade has been initiated or otherwise
+            returns False. If position is False, then function exits and no further action is attempted.
+
+            If a trade has been initiated, it might have already been turned down within the function chain
+            called within `_determine_position()`. Continuation of trade is determined by `FutureTrade.attempt`
+            flag. If True and is not a duplicate (determined by extrema that trade is based), then trade is passed
+            to `_buy()` or `_sell()` function to be executed on open market. If trade is then rejected, it is handled
+            by internally by `_add_order()`. On the other hand, if `_determine_position()` returns a `FutureTrade`
+            that has already been turned down, then trade is appended to `failed_orders` container. Ideally,
+            `_add_order()` should return a `FutureTrade` and there should be a dedicated function which appends
+            trades to `orders` or `failed_orders` containers.
 
         Args:
-            point: Current position in time. Used during backtesting.
+            point:
+                Current position in time. Used during backtesting. During normal operation, `point` remains
+                `None` and most recent candle data is used.
 
         Returns:
             If algorithm decided to place an order, the result of order execution is returned.
