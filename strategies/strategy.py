@@ -1,13 +1,13 @@
 import pandas as pd
 from os import path
 from datetime import datetime
-from typing import Tuple, Union, List, Dict
+from typing import Union, List, Dict
 from abc import ABC, abstractmethod
 import logging
 from warnings import warn
 
 from core.MarketAPI import MarketAPI
-from models import Trade, SuccessfulTrade, add_to_df, truncate
+from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade
 from primitives import Side, StoredObject
 
 
@@ -54,7 +54,7 @@ class Strategy(StoredObject, ABC):
         """
         super().__init__(**kwargs)
         self.orders = SuccessfulTrade.container()
-        """ History of successful orders performed by this strategy. Timestamps of extrema are used as indexes.
+        """ History of attempt orders performed by this strategy. Timestamps of extrema are used as indexes.
         
         Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
         is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
@@ -64,7 +64,7 @@ class Strategy(StoredObject, ABC):
             Columns and dtypes should be identical to those of `SuccessfulTrade`
         """
 
-        self.failed_orders = Trade.container()
+        self.failed_orders = FailedTrade.container()
         """ History of orders that were not accepted by the market.
         
         Could be used to:
@@ -104,32 +104,25 @@ class Strategy(StoredObject, ABC):
         """ Post sale processing of trade before adding to local container. """
         pass
 
-    def _add_order(self, extrema: pd.Timestamp, side: Side) -> Union['SuccessfulTrade', 'False']:
+    def _add_order(self, trade: FutureTrade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Create and send order to market, then store in history.
 
         Not all orders will post, so only orders that are executed (accepted by the market) are stored.
         However, for the purposes of debugging, failed orders are stored.
 
-        Args:
-            extrema: timestamp at which an extrema occurred.
-            side: type of trade to execute
-
         Returns:
             `SuccessfulTrade` (returned from `market.place_order()`) if market accepted trade
             `False` if trade was rejected by market there was an error storing
         """
-        amount = self._calc_amount(extrema, side)
-        rate = self._calc_rate(extrema, side)
-        trade: Trade = Trade(amount, rate, side)
+        trade, extrema = trade.separate()
 
-        successful: Union[SuccessfulTrade, 'False'] = self.market.post_order(trade)
-        if successful:
-            self._post_sale(extrema, successful)
-            add_to_df(self, 'orders', extrema, successful)
-            return successful
-
-        add_to_df(self, 'failed_orders', extrema, trade)
-        return False
+        result: Union[SuccessfulTrade, FailedTrade] = self.market.post_order(trade)
+        if result:
+            self._post_sale(extrema, result)
+            add_to_df(self, 'orders', extrema, result)
+        else:
+            add_to_df(self, 'failed_orders', extrema, result)
+        return result
 
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
@@ -143,20 +136,25 @@ class Strategy(StoredObject, ABC):
             If algorithm decided to place an order, the result of order execution is returned.
             Otherwise, `False` is returned by default
         """
-        position = self._determine_position(point)
+        result: Union['FutureTrade', 'False'] = self._determine_position(point)
 
-        if position:
-            side, extrema = position
-            assert side in (Side.BUY, Side.SELL)
-            if extrema in self.orders.index:
-                msg = f"Attempted to trade ({side}) for extrema {extrema}"
-                warn(msg)
-                logging.warning(msg)
-            else:
-                if side == Side.BUY:
-                    return self._buy(extrema)
+        if result is False:
+            return False
+        else:
+            if result:          # `FutureTrade` is True if trade is being attempted
+                if result.point in self.orders.index:
+                    msg = f"Attempted duplicate trade ({result.side}) for extrema {result.point}"
+                    warn(msg)
+                    logging.warning(msg)
                 else:
-                    return self._sell(extrema)
+                    if result.side == Side.BUY:
+                        return self._buy(result)
+                    else:
+                        return self._sell(result)
+            else:
+                # `FutureTrade` is False if a trade has been initiated but will not be attempted.
+                #   This occurs when trade is not profitable, so it will be logged.
+                add_to_df(self, 'failed_orders', result.point, result.convert())
         return False
 
     @abstractmethod
@@ -189,7 +187,7 @@ class Strategy(StoredObject, ABC):
         """
         pass
 
-    def _buy(self, extrema: pd.Timestamp) -> bool:
+    def _buy(self, trade: FutureTrade) -> bool:
         """
         Attempt to perform buy.
 
@@ -208,13 +206,13 @@ class Strategy(StoredObject, ABC):
                 `false` if it was not placed.
         """
 
-        accepted: SuccessfulTrade = self._add_order(extrema, Side.BUY)
+        accepted: SuccessfulTrade = self._add_order(trade)
         if accepted:
             assert accepted.side == Side.BUY
             logging.info(f"Buy order at {accepted.rate} was placed at {datetime.now()}")
         return bool(accepted)
 
-    def _sell(self, extrema: pd.Timestamp) -> bool:
+    def _sell(self, trade: FutureTrade) -> bool:
         """
         Attempt to perform sell.
 
@@ -233,7 +231,7 @@ class Strategy(StoredObject, ABC):
                 `false` if it was not placed.
         """
 
-        accepted: SuccessfulTrade = self._add_order(extrema, Side.SELL)
+        accepted: SuccessfulTrade = self._add_order(trade)
         if accepted:
             assert accepted.side == Side.SELL
             logging.info(f"Sell order at {accepted.rate} was placed at {datetime.now()}")
@@ -275,7 +273,7 @@ class Strategy(StoredObject, ABC):
             self.detector.update()
 
     @abstractmethod
-    def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
+    def _determine_position(self, extrema: pd.Timestamp = None) -> Union['FutureTrade', 'False']:
         """ Determine whether buy or sell order should be executed.
 
         Args:

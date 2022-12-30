@@ -10,7 +10,8 @@ import logging
 
 from core.MarketAPI import MarketAPI
 from misc import TZ
-from models import json_to_df, Trade, SuccessfulTrade
+from primitives import ReasonCode
+from models import json_to_df, Trade, SuccessfulTrade, FailedTrade
 
 
 class GeminiMarket(MarketAPI):
@@ -164,7 +165,7 @@ class GeminiMarket(MarketAPI):
         response = requests.get(self.BASE_URL + f"/v1/book/{self.symbol}")
         return response.json()
 
-    def _post(self, endpoint: str, data: dict = None) -> dict:
+    def _post(self, endpoint: str, data: dict = None) -> Union[dict, 'ReasonCode']:
         """ Access private API endpoints.
 
         Handles payload encapsulation in accordance with API docs.
@@ -192,7 +193,10 @@ class GeminiMarket(MarketAPI):
             "Cache-Control": "no-cache"
         }
 
-        response = requests.post(self.BASE_URL + endpoint, headers=headers, data=None)
+        try:
+            response = requests.post(self.BASE_URL + endpoint, headers=headers, data=None)
+        except ConnectionError:
+            return ReasonCode.POST_ERROR
 
         return response.json()
 
@@ -221,7 +225,7 @@ class GeminiMarket(MarketAPI):
         _id = response['order_id']
         return SuccessfulTrade(amount, rate, trade.side, id=_id)
 
-    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
+    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Places an order - specifically a Fill-or-Kill Limit Order.
 
         Notes:
@@ -250,11 +254,14 @@ class GeminiMarket(MarketAPI):
             'options': ["fill-or-kill"]
         }
 
-        response = self._post("/v1/order/new", data)
-        if not response['is_cancelled']:  # order was fulfilled
+        response: Union[dict, 'ReasonCode'] = self._post("/v1/order/new", data)
+        if type(response) is ReasonCode:
+            _reason = response
+        elif not response['is_cancelled']:  # order was fulfilled
             return self._translate(response, trade)
         else:
-            return False
+            _reason = ReasonCode.MARKET_REJECTED
+        return FailedTrade.convert(trade, _reason)
 
     def translate_period(self, freq: str) -> str:
         """ Converts Gemini candle interval to a valid value for `pandas.DateOffset`.
@@ -329,4 +336,3 @@ class GeminiMarket(MarketAPI):
             _point = _point.strftime('%m/%d/%Y')          # generically select data
 
         return _point
-

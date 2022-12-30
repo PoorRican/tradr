@@ -1,12 +1,12 @@
 from abc import ABC
 from datetime import datetime
 import pandas as pd
-from typing import Union, Tuple, List
+from typing import Union, List
 
 from strategies.financials import FinancialsMixin
-from primitives import Signal, Side
+from primitives import Signal, Side, ReasonCode
 from misc import TZ
-from models import Indicator, FrequencySignal
+from models import Indicator, FrequencySignal, FutureTrade
 
 
 class OscillationMixin(FinancialsMixin, ABC):
@@ -68,7 +68,8 @@ class OscillationMixin(FinancialsMixin, ABC):
 
         return False
 
-    def _determine_position(self, point: pd.Timestamp = None) -> Union[Tuple[Side, 'pd.Timestamp'], 'False']:
+    def _determine_position(self, point: pd.Timestamp = None) -> \
+            Union['FutureTrade', 'False']:
         """ Determine trade execution and type.
 
         Oscillation of trade types is executed here. Duplicate trade type is not returned if a new signal is
@@ -79,6 +80,15 @@ class OscillationMixin(FinancialsMixin, ABC):
 
         Notes:
             `self.indicators.develop()` needs to be called beforehand.
+
+        Returns:
+            `FutureTrade` if trade signals have initiated a trade. If trade is not profitable, then
+            `attempt` is False and proper `ReasonCode` is tagged. A `FutureTrade` is returned because
+            it contains data about when this trade was initiated and if this trade should be attempted or not,
+            but does not indicate that the trade has been successfully executed. The `SuccessfulTrade` dataclass
+            has been explicitly reserved for that function.
+
+            Otherwise, if a trade has not been initiated, False is returned.
         """
         if not point:
             point = self.market.most_recent_timestamp
@@ -88,10 +98,14 @@ class OscillationMixin(FinancialsMixin, ABC):
             pass
         elif self._oscillation(signal, point=point):
             signal: Side = Side(signal)
-            rate = self._calc_rate(point, signal)
-            amount = self._calc_amount(point, signal)
-            if self._is_profitable(amount, rate, signal, point):
-                return signal, point
+            rate: float = self._calc_rate(point, signal)
+            amount: float = self._calc_amount(point, signal)
+
+            _profitable: bool = self._is_profitable(amount, rate, signal, point)
+            trade = FutureTrade(amount, rate, signal, _profitable, point)
+            if not _profitable:
+                trade.load = ReasonCode.NOT_PROFITABLE
+            return trade
 
         return False
 

@@ -1,10 +1,12 @@
 from math import nan
+from typing import List
+
 import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
 from analysis.trend import TrendDetector
-from primitives import TrendDirection, MarketTrend
+from primitives import TrendDirection, MarketTrend, Signal
 from misc import TZ
 
 
@@ -19,9 +21,18 @@ class TrendDetectorTests(unittest.TestCase):
         for i, val in zip(FREQUENCIES, values):
             setattr(self.detector._indicators[i], attr, MagicMock(return_value=val))
 
+    def set_indicator_computed(self, idx, signals: List['TrendDirection'], strengths: List[float]):
+        for freq, container, index in zip(self.detector._indicators.keys(),
+                                          self.detector._indicators.values(),
+                                          range(len(self.detector._indicators))):
+            for i in container.indicators:
+                i.computed = pd.DataFrame([[signals[index], strengths[index]]],
+                                          columns=['signal', 'strength'], index=[idx])
+
     def propagate_to_indicator_df(self, idx, attr, col, values):
         for freq, container, val in zip(self.detector._indicators.keys(),
-                                        self.detector._indicators.values(), values):
+                                        self.detector._indicators.values(),
+                                        values):
             point = self.market.process_point(idx, freq)
             for i in self.detector._indicators[freq].indicators:
                 setattr(i, attr, pd.DataFrame({col: val}, index=[point]))
@@ -60,31 +71,31 @@ class TrendDetectorTests(unittest.TestCase):
         self.market.process_point = MagicMock(return_value=idx)
 
         # mocked up-trend
-        values = [TrendDirection.UP, TrendDirection.CYCLE, TrendDirection.UP]
-        self.propagate_to_indicator_df(idx, 'computed', 'signal', values)
-        self.set_indicator_attr('strength', [2, nan, 4])
+        signals = [TrendDirection.UP, TrendDirection.CYCLE, TrendDirection.UP]
+        strengths = [2, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
 
         # `nan` should be dropped, since `signal` value does not agree
         self.assertEqual(3, self.detector._determine_scalar(TrendDirection.UP, idx))
 
         # mock cycle
-        values = [TrendDirection.CYCLE, TrendDirection.CYCLE, TrendDirection.UP]
-        self.propagate_to_indicator_df(idx, 'computed', 'signal', values)
-        self.set_indicator_attr('strength', [nan, nan, 4])
+        signals = [TrendDirection.CYCLE, TrendDirection.CYCLE, TrendDirection.UP]
+        strengths = [nan, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
 
         self.assertTrue(self.detector._determine_scalar(TrendDirection.CYCLE, idx) is nan)
 
         # mock ambiguous
-        values = [TrendDirection.DOWN, TrendDirection.CYCLE, TrendDirection.UP]
-        self.propagate_to_indicator_df(idx, 'computed', 'signal', values)
-        self.set_indicator_attr('strength', [1, nan, 4])
+        signals = [TrendDirection.DOWN, TrendDirection.CYCLE, TrendDirection.UP]
+        strengths = [1, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
 
         self.assertTrue(self.detector._determine_scalar(TrendDirection.CYCLE, idx) is nan)
 
         # mock ambiguous
-        values = [TrendDirection.DOWN, TrendDirection.DOWN, TrendDirection.UP]
-        self.propagate_to_indicator_df(idx, 'computed', 'signal', values)
-        self.set_indicator_attr('strength', [1, nan, 4])
+        signals = [TrendDirection.DOWN, TrendDirection.DOWN, TrendDirection.UP]
+        strengths = [1, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
 
         self.assertEqual(1, self.detector._determine_scalar(TrendDirection.DOWN, idx))
 

@@ -8,9 +8,10 @@ Notes:
 
 from dataclasses import dataclass, field, fields
 import pandas as pd
-from typing import Union, Any
+from typing import Union, Any, Tuple
 
-from primitives import Side
+from misc import TZ
+from primitives import Side, ReasonCode
 
 
 @dataclass
@@ -51,8 +52,51 @@ class Trade:
 
 
 @dataclass
+class FutureTrade(Trade):
+    attempt: bool
+    point: pd.Timestamp
+    load: Any = None
+
+    def __bool__(self):
+        return self.attempt
+
+    def _trade(self):
+        return Trade(self.amt, self.rate, self.side)
+
+    def convert(self, load: Any = None, attempt: bool = None) -> Union['SuccessfulTrade', 'FailedTrade']:
+        if load is None:
+            load = self.load
+        if attempt is None:
+            attempt = self.attempt
+
+        if attempt:
+            return SuccessfulTrade(self.amt, self.rate, self.side, str(load))
+        return FailedTrade(self.amt, self.rate, self.side, ReasonCode(load))
+
+    def separate(self) -> Tuple['Trade', 'pd.Timestamp']:
+        return self._trade(), self.point
+
+
+@dataclass
 class SuccessfulTrade(Trade):
     id: field(default_factory=str)
+
+    @classmethod
+    def __bool__(cls):
+        return True
+
+
+@dataclass
+class FailedTrade(Trade):
+    reason: ReasonCode
+
+    @classmethod
+    def __bool__(cls):
+        return False
+
+    @classmethod
+    def convert(cls, trade: Trade, reason: ReasonCode) -> 'FailedTrade':
+        return cls(trade.amt, trade.rate, trade.side, reason)
 
 
 def containerize(class_or_instance: Any) -> pd.DataFrame:
@@ -108,7 +152,7 @@ def add_to_df(__object: object, container: str, extrema: Union['pd.Timestamp', s
     """
     assert type(extrema) in (pd.Timestamp, str, int)
     if type(extrema) == str:
-        extrema = pd.Timestamp(extrema)
+        extrema = pd.Timestamp(extrema, tz=TZ)
 
     df = getattr(__object, container)
     if extrema in df.index and not force:

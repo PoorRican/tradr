@@ -9,8 +9,8 @@ import warnings
 
 from core.market import Market
 from misc import TZ
-from models.trades import Trade, SuccessfulTrade
-from primitives.cache import CachedValue
+from models.trades import Trade, SuccessfulTrade, FailedTrade
+from primitives import CachedValue
 
 
 class MarketAPI(Market, ABC):
@@ -115,8 +115,10 @@ class MarketAPI(Market, ABC):
                 Pre-calculated `datetime` for current time.
 
         Returns
-            True if candle data is stale and needs to be updated. Otherwise, returns False.
+            True if candle data is empty or is stale and therefore needs to be updated. Otherwise, returns False.
         """
+        if self._data.empty:
+            return True
         if now is None:
             now = datetime.datetime.now(tz=TZ)
         data = self.candles(frequency)
@@ -232,7 +234,7 @@ class MarketAPI(Market, ABC):
             raise e
 
     @abstractmethod
-    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
+    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Post order to market.
 
         Args:
