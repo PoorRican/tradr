@@ -5,14 +5,16 @@ Notes:
         - Replace `Market.BASE_URL` values with test URLs
 """
 
-from strategies.strategy import Strategy
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Union
 import logging
 
+from misc import TZ
+from strategies.OscillationMixin import OscillationMixin
 
-class Backtesting(object):
+
+class Simulation(object):
     """ Class to test strategies on existing candle data.
 
     Plots market data and shows when a given strategy will decide to buy, hold, or sell.
@@ -21,8 +23,8 @@ class Backtesting(object):
         TODO:
             - Implement a way to store and access historical values.
     """
-    def __init__(self, strategy: Strategy):
-        self.strategy: Strategy = strategy
+    def __init__(self, strategy: OscillationMixin):
+        self.strategy: OscillationMixin = strategy
 
     @property
     def market(self):
@@ -42,7 +44,7 @@ class Backtesting(object):
 
     def _progress(self, current: int):
         """ Show percentage complete as an integer """
-        total = len(self.market.data)
+        total = len(self.strategy.candles)
         return (100 * current) // total
 
     def process_timeframes(self, start: Union[pd.Timestamp, str] = None, end: Union[pd.Timestamp, str] = None):
@@ -54,30 +56,29 @@ class Backtesting(object):
             end: timestamp or date. If `None`, go to end of ticker data.
         """
         if start is None:
-            start = self.market.data.iloc[0].name
+            start = self.strategy.candles.iloc[0].name
         if end is None:
-            end = self.market.data.iloc[-1].name
+            end = self.strategy.candles.iloc[-1].name
 
         msg = "Starting simulation"
         logging.info(msg)
         print(msg)
 
-        freq = self.market.data.attrs['freq']
-        freq = self.market.translate_period(freq)
+        freq = self.market.translate_period(self.strategy.freq)
 
-        msg = "Compute data"
+        msg = "Pre-processing data"
         logging.info(msg)
         print(msg)
         self.strategy.calculate_all()
 
-        msg = "Beginning to process data"
+        msg = "Beginning to process decision data"
         logging.info(msg)
         print(msg)
-        frames = pd.date_range(start, end, freq=freq, tz='US/Pacific')
-        for i, frame in enumerate(frames):
+        points = pd.date_range(start, end, freq=freq, tz=TZ)
+        for i, point in enumerate(points):
             # TODO: enable multithreading
             self.print_progress(i)
-            self.strategy.process(frame)
+            self.strategy.process(point)
 
         msg = "Finished processing data"
         logging.info(msg)
@@ -92,11 +93,11 @@ class Backtesting(object):
             end: date or timestamp to end plot
         """
         if start is None:
-            start = self.market.data.iloc[0].name
+            start = self.strategy.candles.iloc[0].name
         if end is None:
-            end = self.market.data.iloc[-1].name
+            end = self.strategy.candles.iloc[-1].name
 
-        self.market.data.loc[start:end]['close'].plot(color='blue')
+        self.strategy.candles.loc[start:end]['close'].plot(color='blue')
 
         orders = self.strategy.orders.loc[start:end]
         buys = orders[orders['side'] == 'buy']

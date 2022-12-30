@@ -1,23 +1,17 @@
 import pandas as pd
-from os import path, listdir, mkdir
+from os import path
 from datetime import datetime
-import numpy as np
-from typing import Tuple, Union, List, Dict
+from typing import Union, List, Dict
 from abc import ABC, abstractmethod
 import logging
-from yaml import safe_dump, safe_load
 from warnings import warn
 
-from models.trades import Trade, SuccessfulTrade, add_to_df, truncate, Side
-from core.market import Market
-from models.data import DATA_ROOT
+from core.MarketAPI import MarketAPI
+from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade
+from primitives import Side, StoredObject
 
 
-_FN_EXT = ".yml"
-_LITERALS_FN = f"literals{_FN_EXT}"
-
-
-class Strategy(ABC):
+class Strategy(StoredObject, ABC):
     """ Abstract a trading strategy.
 
         Performs computation necessary to determine when and how much to trade. Inherited instances should
@@ -43,17 +37,24 @@ class Strategy(ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
-    def __init__(self, market: Market, root: str = DATA_ROOT):
+    def __init__(self, market: 'MarketAPI', freq: str, **kwargs):
         """
 
         Args:
             market:
                 Platform to use for market data and trading.
-            root:
-                Root directory to store candle data
+
+                Instances of both `Strategy` and `Market` are interchangeable at any time and would only be hard-linked
+                for when there are un-executed trades on-the-books. This leaves room for multithreading and concurrency
+                between multiple instances of both `Strategy` and `Market`.
+
+            freq:
+                Operating frequency for strategy. Both trade decisions (signals derived from `indicator` and how often
+                trading decisions are evaluated) will be derived from this frequency.
         """
+        super().__init__(**kwargs)
         self.orders = SuccessfulTrade.container()
-        """ History of successful orders performed by this strategy. Timestamps of extrema are used as indexes.
+        """ History of attempt orders performed by this strategy. Timestamps of extrema are used as indexes.
         
         Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
         is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
@@ -63,7 +64,7 @@ class Strategy(ABC):
             Columns and dtypes should be identical to those of `SuccessfulTrade`
         """
 
-        self.failed_orders = Trade.container()
+        self.failed_orders = FailedTrade.container()
         """ History of orders that were not accepted by the market.
         
         Could be used to:
@@ -73,101 +74,20 @@ class Strategy(ABC):
         """
 
         self.market = market
-        """ Reference to `Market` object.
-        
-        Notes:        
-        
-            -   Interchangeability and Concurrency:
-            
-                Instances of both `Strategy` and `Market` are interchangeable at any time and would only be hard-linked
-                for when there are un-executed trades on-the-books. This leaves room for multithreading and concurrency
-                between multiple instances of both `Strategy` and `Market`.
-        """
-
-        self.root = root
+        self.freq = freq
 
     @classmethod
-    def factory(cls, market: Market, params: List[Dict]):
+    def factory(cls, market: 'MarketAPI', params: List[Dict]):
         instances = []
         # TODO: markets need to by dynamically loaded
         for i in params:
-            instances.append(cls(market=market))
+            instances.append(cls(market=market, **i))
 
-    def load(self):
-        """ Load stored attributes and sequence data from instance directory onto memory.
+        return instances
 
-        Notes
-            All data on memory is overwritten.
-        """
-        # TODO: load linked/stored indicator and market data/parameters
-
-        _dir = self._instance_dir
-
-        # load `_literals`. Literals should be verified (ie: not be a function)
-        with open(path.join(_dir, _LITERALS_FN), 'r') as f:
-            _literals: dict = safe_load(f)
-            for k, v in _literals.items():
-                # verify data
-                assert k in self.__dict__.keys()
-                assert type(v) in (str, int, float)
-
-                setattr(self, k, v)
-
-        _files = listdir(_dir)
-        _files.remove(_LITERALS_FN)
-        for _file in _files:
-            attr = _file.removesuffix(_FN_EXT)
-            assert hasattr(self, attr)
-
-            # TODO: verify data checksum
-
-            with open(path.join(_dir, _file), 'r') as f:
-                _dict = safe_load(f)
-
-                _df = pd.DataFrame.from_records(_dict)
-                setattr(self, attr, _df)
-
-    def save(self):
-        """ Store attributes and sequence data in instance directory
-
-        Notes:
-            Since `_instance_dir` relies on certain parameters, a factory function should initialize
-            classes based from a runtime file. This runtime file will define attributes such as strategy
-            name, market platform, and symbol, which are the essential characteristics which will differentiate
-            instances from one another. For security reasons, it might be beneficial to hash all instance directories
-            and include checksum in runtime data.
-        """
-        # TODO: somehow link/store market parameters
-        # TODO: somehow link/store indicator data
-
-        # aggregate attributes
-        _literals = {}
-        _sequence_keys: List[str, ...] = []
-        for k, v in self.__dict__.items():
-            _t = type(v)
-            if _t == str or _t == int or _t == float:
-                _literals[k] = v
-            elif _t == np.float64:              # `assets` sometimes get stored as `np.float64`
-                _literals[k] = float(v)
-            elif _t == pd.DataFrame:
-                _sequence_keys.append(k)
-
-        # TODO: implement data checksum
-
-        _dir = self._instance_dir
-
-        if not path.exists(_dir):
-            # TODO: implement mode for read/write access controls
-            mkdir(_dir)
-
-        # store literal parameters
-        with open(path.join(_dir, _LITERALS_FN), 'w') as f:
-            safe_dump(_literals, f)
-
-        # store sequence data
-        for attr in _sequence_keys:
-            with open(path.join(_dir, f"{attr}.yml"), 'w') as f:
-                safe_dump(getattr(self, attr).to_dict(orient='records'), f)
+    @property
+    def candles(self):
+        return self.market.candles(self.freq)
 
     def _calc_profit(self, amount: float, rate: float) -> float:
         """ Calculates profit of a sale.
@@ -178,65 +98,78 @@ class Strategy(ABC):
         last_trade = self.orders.iloc[-1]
 
         gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
-        return gain - self.market.get_fee()
+        return gain - self.market.fee
 
-    def _post_sale(self, trade: SuccessfulTrade):
+    def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade):
         """ Post sale processing of trade before adding to local container. """
         pass
 
-    def _add_order(self, extrema: pd.Timestamp, side: Side) -> Union['SuccessfulTrade', 'False']:
+    def _add_order(self, trade: FutureTrade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Create and send order to market, then store in history.
 
         Not all orders will post, so only orders that are executed (accepted by the market) are stored.
         However, for the purposes of debugging, failed orders are stored.
 
-        Args:
-            extrema: timestamp at which an extrema occurred.
-            side: type of trade to execute
-
         Returns:
             `SuccessfulTrade` (returned from `market.place_order()`) if market accepted trade
             `False` if trade was rejected by market there was an error storing
         """
-        amount = self._calc_amount(extrema, side)
-        rate = self._calc_rate(extrema, side)
-        trade: Trade = Trade(amount, rate, side)
+        trade, extrema = trade.separate()
 
-        successful: Union[SuccessfulTrade, 'False'] = self.market.place_order(trade)
-        if successful:
-            self._post_sale(successful)
-            add_to_df(self, 'orders', extrema, successful)
-            return successful
-
-        add_to_df(self, 'failed_orders', extrema, trade)
-        return False
+        result: Union[SuccessfulTrade, FailedTrade] = self.market.post_order(trade)
+        if result:
+            self._post_sale(extrema, result)
+            add_to_df(self, 'orders', extrema, result)
+        else:
+            add_to_df(self, 'failed_orders', extrema, result)
+        return result
 
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
 
-        This method is the main interface method.
+
+        Notes:
+            This method is the main interface method for automated trading. This function called
+            `_determine_position()`, which returns a `FutureTrade` if a trade has been initiated or otherwise
+            returns False. If position is False, then function exits and no further action is attempted.
+
+            If a trade has been initiated, it might have already been turned down within the function chain
+            called within `_determine_position()`. Continuation of trade is determined by `FutureTrade.attempt`
+            flag. If True and is not a duplicate (determined by extrema that trade is based), then trade is passed
+            to `_buy()` or `_sell()` function to be executed on open market. If trade is then rejected, it is handled
+            by internally by `_add_order()`. On the other hand, if `_determine_position()` returns a `FutureTrade`
+            that has already been turned down, then trade is appended to `failed_orders` container. Ideally,
+            `_add_order()` should return a `FutureTrade` and there should be a dedicated function which appends
+            trades to `orders` or `failed_orders` containers.
 
         Args:
-            point: Current position in time. Used during backtesting.
+            point:
+                Current position in time. Used during backtesting. During normal operation, `point` remains
+                `None` and most recent candle data is used.
 
         Returns:
             If algorithm decided to place an order, the result of order execution is returned.
             Otherwise, `False` is returned by default
         """
-        position = self._determine_position(point)
+        result: Union['FutureTrade', 'False'] = self._determine_position(point)
 
-        if position:
-            side, extrema = position
-            assert side in (Side.BUY, Side.SELL)
-            if extrema in self.orders.index:
-                msg = f"Attempted to trade ({side}) for extrema {extrema}"
-                warn(msg)
-                logging.warning(msg)
-            else:
-                if side == Side.BUY:
-                    return self._buy(extrema)
+        if result is False:
+            return False
+        else:
+            if result:          # `FutureTrade` is True if trade is being attempted
+                if result.point in self.orders.index:
+                    msg = f"Attempted duplicate trade ({result.side}) for extrema {result.point}"
+                    warn(msg)
+                    logging.warning(msg)
                 else:
-                    return self._sell(extrema)
+                    if result.side == Side.BUY:
+                        return self._buy(result)
+                    else:
+                        return self._sell(result)
+            else:
+                # `FutureTrade` is False if a trade has been initiated but will not be attempted.
+                #   This occurs when trade is not profitable, so it will be logged.
+                add_to_df(self, 'failed_orders', result.point, result.convert())
         return False
 
     @abstractmethod
@@ -269,7 +202,7 @@ class Strategy(ABC):
         """
         pass
 
-    def _buy(self, extrema: pd.Timestamp) -> bool:
+    def _buy(self, trade: FutureTrade) -> bool:
         """
         Attempt to perform buy.
 
@@ -288,13 +221,13 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        accepted: SuccessfulTrade = self._add_order(extrema, Side.BUY)
+        accepted: SuccessfulTrade = self._add_order(trade)
         if accepted:
             assert accepted.side == Side.BUY
             logging.info(f"Buy order at {accepted.rate} was placed at {datetime.now()}")
         return bool(accepted)
 
-    def _sell(self, extrema: pd.Timestamp) -> bool:
+    def _sell(self, trade: FutureTrade) -> bool:
         """
         Attempt to perform sell.
 
@@ -313,7 +246,7 @@ class Strategy(ABC):
                 `false` if it was not placed.
         """
 
-        accepted: SuccessfulTrade = self._add_order(extrema, Side.SELL)
+        accepted: SuccessfulTrade = self._add_order(trade)
         if accepted:
             assert accepted.side == Side.SELL
             logging.info(f"Sell order at {accepted.rate} was placed at {datetime.now()}")
@@ -348,16 +281,14 @@ class Strategy(ABC):
 
         # Develop indicator/oscillator data
         if hasattr(self, 'indicators'):
-            self.indicators.develop(self.market.data)
+            self.indicators.update()
 
         # Develop trend detector data
         if hasattr(self, 'detector'):
-            # TODO: `detector.update_candles()` should be executed outside
-            self.detector.update_candles()
-            self.detector.develop()
+            self.detector.update()
 
     @abstractmethod
-    def _determine_position(self, extrema: pd.Timestamp = None) -> Union[Tuple[str, 'pd.Timestamp'], 'False']:
+    def _determine_position(self, extrema: pd.Timestamp = None) -> Union['FutureTrade', 'False']:
         """ Determine whether buy or sell order should be executed.
 
         Args:

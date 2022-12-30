@@ -6,7 +6,7 @@ from enum import IntEnum
 from dataclasses import dataclass
 
 
-class TrendMovement(IntEnum):
+class TrendDirection(IntEnum):
     UP = 1
     CYCLE = 0
     DOWN = -1
@@ -14,5 +14,7 @@ class TrendMovement(IntEnum):
 
 @dataclass
 class MarketTrend:
-    trend: TrendMovement
+    trend: TrendDirection
     scalar: int = 1
+
+

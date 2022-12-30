@@ -4,15 +4,6 @@ from os import path
 from datetime import datetime
 
 
-def _project_root() -> str:
-    _root = path.join(__file__, path.pardir, path.pardir)
-    return path.abspath(_root)
-
-
-ROOT = _project_root()
-DATA_ROOT = f'{_project_root()}/data/'
-
-
 def json_to_df(data) -> pd.DataFrame:
     """ Convert timestamp and add columns to raw data.
     """
@@ -52,7 +43,7 @@ def get_candles(t='1m') -> pd.DataFrame:
 def combine_data(existing, new):
     """ Combines, cleans and sorts DataFrames """
     joined = existing.append(new)
-    joined[~joined.index.duplicated(keep='last')]
+    joined = joined[~joined.index.duplicated(keep='last')]
     joined.sort_values('dt', inplace=True)
     return joined[pd.notnull(joined.index)]
 

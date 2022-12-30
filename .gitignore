@@ -9,8 +9,8 @@ __pycache__/
 *.pkl
 .old.git
 
-# secrets
-gemini_api.yml
+# secrets & config files
+*.yml
 
 # data storage
 data/

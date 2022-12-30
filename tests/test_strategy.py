@@ -1,22 +1,22 @@
-import datetime as dt
-from os import mkdir, listdir
-from os import path
 import pandas as pd
-from shutil import rmtree
 import unittest
 from unittest.mock import patch, MagicMock, create_autospec
-from yaml import safe_load, safe_dump
 
 from core.market import Market
-from models.trades import SuccessfulTrade, Trade, Side
-from strategies.strategy import Strategy, DATA_ROOT
+from models import SuccessfulTrade, Trade, FutureTrade, FailedTrade
+from primitives import Side, ReasonCode
+from strategies.strategy import Strategy
 
 
 class BaseStrategyTestCase(unittest.TestCase):
     @patch('strategies.strategy.Strategy.__abstractmethods__', set())
     def setUp(self):
         self.market = create_autospec(Market, instance=True)
-        self.strategy = Strategy(self.market)
+        self.strategy = Strategy(self.market, freq='')
+
+    @staticmethod
+    def prevent_call(obj, func: str):
+        setattr(obj, func, MagicMock(side_effect=RuntimeError(f'`{func}()` should not have been called')))
 
 
 class GenericStrategyTests(BaseStrategyTestCase):
@@ -39,13 +39,11 @@ class GenericStrategyTests(BaseStrategyTestCase):
     @patch('strategies.strategy.Strategy.__abstractmethods__', set())
     def test_init_load(self):
         """ Check that passing `load=True` calls load function. """
-        self.skipTest('Load argument passed to `Strategy.__init__()` is deprecated as of v0.2.0-alpha.')
-
         with patch.object(Strategy, 'load', side_effect=RuntimeError) as _mock_load:
-            Strategy(self.market, load=False)
+            Strategy(self.market, freq='', load=False)
 
         with patch.object(Strategy, 'load') as _mock_load:
-            Strategy(self.market, load=True)
+            Strategy(self.market, freq='', load=True)
             _mock_load.assert_called_once()
 
     def test_instance_dir(self):
@@ -61,39 +59,37 @@ class GenericStrategyTests(BaseStrategyTestCase):
 
 class StrategyAddOrderTests(BaseStrategyTestCase):
     def test_add_successful_order(self):
-        self.strategy._calc_amount = MagicMock(return_value=0)
-        self.strategy._calc_rate = MagicMock(return_value=0)
+        extrema = pd.Timestamp.now()
+        trade = FutureTrade(0, 0, Side.BUY, True, extrema)
+        self.market.post_order = MagicMock(return_value=trade.convert(0))
 
-        trade = SuccessfulTrade(0, 0, Side.BUY, 'id')
-        self.market.place_order = MagicMock(return_value=trade)
         self.strategy._post_sale = MagicMock()
+        self.prevent_call(self.strategy, '_calc_amount')
+        self.prevent_call(self.strategy, '_calc_rate')
 
         with patch('strategies.strategy.add_to_df') as _mock_add_to_df:
-            extrema = pd.Timestamp.now()
-            result = self.strategy._add_order(extrema, Side.BUY)
-            self.assertEqual(result, trade)
+            result = self.strategy._add_order(trade)
+            self.assertTrue(result)
+            self.assertIsInstance(result, SuccessfulTrade)
 
-            self.strategy._calc_rate.assert_called_once()
-            self.strategy._calc_amount.assert_called_once()
-            self.strategy._post_sale.assert_called_once_with(trade)
-            _mock_add_to_df.assert_called_once_with(self.strategy, 'orders', extrema, trade)
+            self.strategy._post_sale.assert_called_once()
+            _mock_add_to_df.assert_called_once_with(self.strategy, 'orders', extrema, result)
 
     def test_add_failed_order(self):
-        self.strategy._calc_amount = MagicMock(return_value=0)
-        self.strategy._calc_rate = MagicMock(return_value=0)
+        extrema = pd.Timestamp.now()
+        trade = FutureTrade(0, 0, Side.BUY, False, extrema)
+        self.market.post_order = MagicMock(return_value=trade.convert(0))
 
-        self.market.place_order = MagicMock(return_value=False)
-        self.strategy._post_sale = MagicMock(side_effect=RuntimeError('`_post_sale()` should not have been called'))
+        self.prevent_call(self.strategy, '_post_sale')
+        self.prevent_call(self.strategy, '_calc_amount')
+        self.prevent_call(self.strategy, '_calc_rate')
 
         with patch('strategies.strategy.add_to_df') as _mock_add_to_df:
-            extrema = pd.Timestamp.now()
-            trade = Trade(0, 0, Side.BUY)
-            result = self.strategy._add_order(extrema, Side.BUY)
-            self.assertEqual(result, False)
+            result = self.strategy._add_order(trade)
+            self.assertFalse(result)
+            self.assertIsInstance(result, FailedTrade)
 
-            self.strategy._calc_rate.assert_called_once()
-            self.strategy._calc_amount.assert_called_once()
-            _mock_add_to_df.assert_called_once_with(self.strategy, 'failed_orders', extrema, trade)
+            _mock_add_to_df.assert_called_once_with(self.strategy, 'failed_orders', extrema, result)
 
 
 class StrategyProcessTests(BaseStrategyTestCase):
@@ -103,25 +99,27 @@ class StrategyProcessTests(BaseStrategyTestCase):
     def test_buy_position(self, _mock_buy: MagicMock):
         """ Test when buy should be performed. """
         extrema = pd.Timestamp.now()
+        trade = FutureTrade(0, 0, Side.BUY, True, extrema)
         with patch.object(Strategy, '_determine_position',
-                          return_value=(Side.BUY, extrema)) as _mock_det_pos:
+                          return_value=trade) as _mock_det_pos:
             result = self.strategy.process(extrema)
 
             self.assertEqual(result, 'BUY')
             _mock_det_pos.assert_called_once_with(extrema)
-            _mock_buy.assert_called_once_with(extrema)
+            _mock_buy.assert_called_once_with(trade)
 
     @patch.object(Strategy, '_sell', return_value='SELL')
     def test_sell_position(self, _mock_sell: MagicMock):
         """ Test when sell should be performed. """
         extrema = pd.Timestamp.now()
+        trade = FutureTrade(0, 0, Side.SELL, True, extrema)
         with patch.object(Strategy, '_determine_position',
-                          return_value=(Side.SELL, extrema)) as _mock_det_pos:
+                          return_value=trade) as _mock_det_pos:
             result = self.strategy.process(extrema)
 
             self.assertEqual(result, 'SELL')
             _mock_det_pos.assert_called_once_with(extrema)
-            _mock_sell.assert_called_once_with(extrema)
+            _mock_sell.assert_called_once_with(trade)
 
     def test_false_position(self):
         """ Test when a trade should not be made. """
@@ -137,51 +135,67 @@ class StrategyProcessTests(BaseStrategyTestCase):
         """ Test that no action is taken when there is an existing order"""
         extrema = pd.Timestamp.now()
 
-        self.strategy.orders = pd.DataFrame(index=[extrema])
+        trade = FutureTrade(0, 0, Side.SELL, True, extrema)
+        self.strategy.orders = pd.DataFrame(index=[trade.point])
 
         with patch.object(Strategy, '_determine_position',
-                          return_value=(Side.SELL, extrema)) as _mock_det_pos:
-            result = self.strategy.process(extrema)
+                          return_value=trade) as _mock_det_pos:
+            result = self.strategy.process(trade.point)
             self.assertEqual(result, False)
 
+        trade.side = Side.BUY
         with patch.object(Strategy, '_determine_position',
-                          return_value=(Side.BUY, extrema)) as _mock_det_pos:
-            result = self.strategy.process(extrema)
+                          return_value=trade) as _mock_det_pos:
+            result = self.strategy.process(trade.point)
             self.assertEqual(result, False)
 
 
 class StrategyBuySellTests(BaseStrategyTestCase):
-    @patch.object(Strategy, '_add_order', return_value=SuccessfulTrade(0, 0, Side.BUY, 'id'))
-    def test_buy(self, _mock_add_order: MagicMock):
+    def test_buy(self):
         extrema = pd.Timestamp.now()
-        result = self.strategy._buy(extrema)
+        trade = FutureTrade(0, 0, Side.BUY, True, extrema)
+        load = 'id'
+        with patch.object(Strategy, '_add_order',
+                          return_value=trade.convert(load)) as _mock_add_order:
 
-        # TODO: verify logging
-        self.assertTrue(result)
-        _mock_add_order.assert_called_once_with(extrema, Side.BUY)
+            result = self.strategy._buy(trade)
 
-    @patch.object(Strategy, '_add_order', return_value=False)
-    def test_buy_rejected(self, _mock_add_order: MagicMock):
+            # TODO: verify logging
+            self.assertTrue(result)
+            _mock_add_order.assert_called_once_with(trade)
+
+    def test_buy_rejected(self):
         extrema = pd.Timestamp.now()
-        result = self.strategy._buy(extrema)
+        trade = FutureTrade(0, 0, Side.BUY, True, extrema)
+        with patch.object(Strategy, '_add_order',
+                          return_value=trade.convert(ReasonCode.MARKET_REJECTED, False)) as _mock_add_order:
+            result = self.strategy._buy(trade)
 
-        self.assertFalse(result)
+            self.assertFalse(result)
+            _mock_add_order.assert_called_once_with(trade)
 
-    @patch.object(Strategy, '_add_order', return_value=SuccessfulTrade(0, 0, Side.SELL, 'id'))
-    def test_sell(self, _mock_add_order: MagicMock):
+    def test_sell(self):
         extrema = pd.Timestamp.now()
-        result = self.strategy._sell(extrema)
+        trade = FutureTrade(0, 0, Side.SELL, True, extrema)
+        load = 'id'
+        with patch.object(Strategy, '_add_order',
+                          return_value=trade.convert(load)) as _mock_add_order:
 
-        # TODO: verify logging
-        self.assertTrue(result)
-        _mock_add_order.assert_called_once_with(extrema, Side.SELL)
+            result = self.strategy._sell(trade)
 
-    @patch.object(Strategy, '_add_order', return_value=False)
-    def test_sell_rejected(self, _mock_add_order: MagicMock):
+            # TODO: verify logging
+            self.assertTrue(result)
+            _mock_add_order.assert_called_once_with(trade)
+
+    def test_sell_rejected(self):
         extrema = pd.Timestamp.now()
-        result = self.strategy._sell(extrema)
+        trade = FutureTrade(0, 0, Side.SELL, True, extrema)
+        with patch.object(Strategy, '_add_order',
+                          return_value=trade.convert(ReasonCode.MARKET_REJECTED, False)) as _mock_add_order:
+            result = self.strategy._buy(trade)
 
-        self.assertFalse(result)
+            self.assertFalse(result)
+            _mock_add_order.assert_called_once_with(trade)
 
 
 class StrategyCalcAllTests(BaseStrategyTestCase):
@@ -192,102 +206,29 @@ class StrategyCalcAllTests(BaseStrategyTestCase):
     def test_only_indicators(self):
         """ Test when `indicators` are the only available instance attribute. """
         self.strategy.indicators = MagicMock()
-        self.market.data = MagicMock()
+        self.market._data = MagicMock()
 
-        with patch.object(self.strategy.indicators, 'develop') as _mock_develop:
-            self.assertIsNone(self.strategy.calculate_all())
-            _mock_develop.assert_called_once_with(self.market.data)
+        self.assertIsNone(self.strategy.calculate_all())
+        self.strategy.indicators.update.assert_called_once()
 
     def test_only_detector(self):
         """ Test when `detector` are the only available instance attribute. """
         self.strategy.detector = MagicMock()
-        self.market.data = MagicMock()
+        self.market._data = MagicMock()
 
-        with patch.object(self.strategy.detector, 'develop') as _mock_develop:
-            self.assertIsNone(self.strategy.calculate_all())
-            _mock_develop.assert_called_once()
+        self.assertIsNone(self.strategy.calculate_all())
+        self.strategy.detector.update.assert_called_once()
 
     def test_high_level(self):
         """ Test when instance has both `indicators` and `detector` attributes. """
         self.strategy.detector = MagicMock()
-        self.strategy.detector.develop = MagicMock()
-
         self.strategy.indicators = MagicMock()
-        self.strategy.indicators.develop = MagicMock()
 
-        self.market.data = MagicMock()
+        self.market._data = MagicMock()
 
         self.assertIsNone(self.strategy.calculate_all())
-        self.strategy.indicators.develop.assert_called_once_with(self.market.data)
-        self.strategy.detector.develop.assert_called_once()
-
-
-class StrategySerializationTests(BaseStrategyTestCase):
-    """ Ensure `save()` and `load()` methods work as expected. """
-    # data should be verified in temp dir
-    def setUp(self):
-        super().setUp()
-        self.root = f"/tmp/data_{dt.datetime.now()}"
-        with patch(f"strategies.strategy.DATA_ROOT", self.root) as _root:
-            mkdir(_root)
-
-            self.strategy.root = _root
-
-        self.market.__name__ = 'MockMarket'
-        self.market.symbol = 'MockSymbol'
-
-    def tearDown(self):
-        super().setUp()
-
-        rmtree(self.root)
-
-    def test_save(self):
-        _attr_name = 'mock_df'
-        setattr(self.strategy, _attr_name, pd.DataFrame())
-        # TODO: shouldn't an error be raised when adding a frame that didn't previously exist
-
-        self.strategy.save()
-
-        _dir = self.strategy._instance_dir
-        dirs = ('literals.yml', 'orders.yml', 'failed_orders.yml', f"{_attr_name}.yml")
-        _files = listdir(self.strategy._instance_dir)
-        for i in _files:
-            self.assertIn(i, dirs)
-        for i in dirs:
-            self.assertIn(i, _files)
-
-        # TODO: verify file contents
-
-    def test_load_invalid(self):
-        self.strategy.save()
-
-        _fn = path.join(self.strategy._instance_dir, 'literals.yml')
-        with open(_fn, 'r') as f:
-            literals: dict = safe_load(f)
-        self.assertIsInstance(literals, dict)
-        literals['test'] = 'test'
-        with open(_fn, 'w') as f:
-            safe_dump(literals, f)
-
-        with self.assertRaises(AssertionError):
-            self.strategy.load()
-
-    def test_load(self):
-        self.strategy.save()
-
-        _fn = path.join(self.strategy._instance_dir, 'literals.yml')
-        with open(_fn, 'r') as f:
-            literals: dict = safe_load(f)
-        self.assertIsInstance(literals, dict)
-        literals['root'] = 'test'
-        with open(_fn, 'w') as f:
-            safe_dump(literals, f)
-
-        self.strategy.load()
-        self.assertTrue(hasattr(self.strategy, 'root'))
-        self.assertEqual(getattr(self.strategy, 'root'), 'test')
-
-        # TODO: test that dataframes are properly loaded
+        self.strategy.indicators.update.assert_called_once()
+        self.strategy.detector.update.assert_called_once()
 
 
 if __name__ == '__main__':

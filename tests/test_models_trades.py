@@ -1,10 +1,11 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from math import floor
 
 import pandas as pd
 
-from models.trades import Trade, SuccessfulTrade, add_to_df, Side
+from models import Trade, SuccessfulTrade, add_to_df
+from primitives import Side
 
 
 class TestTrade(unittest.TestCase):
@@ -54,37 +55,35 @@ class TestSuccessfulTrade(unittest.TestCase):
 
 
 class TestAddToDf(unittest.TestCase):
+    def setUp(self):
+        self.index = [1]
+        self.container = 'df'
+        self.df = pd.DataFrame([5], index=self.index)
+        self.object = MagicMock()
+        self.object.df = self.df
+
     def test_inplace_insertion(self):
         """ Verify that insertion is done in-place"""
-        with patch('strategies.strategy.Strategy') as cls:
-            instance = cls()
-            instance.orders = pd.DataFrame([5], index=[1])
-        add_to_df(instance, container='orders', extrema=2, instance=10)
-        self.assertEqual(len(instance.orders), 2)
+        add_to_df(self.object, container=self.container, extrema=2, instance=10)
+        self.assertEqual(len(getattr(self.object, self.container)), 2)
 
     def test_no_duplicate(self):
         """ Assert that adding duplicate index raises an error """
         extrema = 1
-        with patch('strategies.strategy.Strategy') as cls:
-            obj = cls()
-            obj.orders = pd.DataFrame([5], index=[extrema])
         with self.assertRaises(IndexError):
-            add_to_df(obj, container='orders', extrema=extrema, instance=1)
+            add_to_df(self.object, container=self.container, extrema=extrema, instance=1)
 
     def test_arg_force(self):
         """ Test that `force` argument allows data for duplicate index """
-        extrema = '10/20/2030'
-        with patch('strategies.strategy.Strategy') as cls:
-            obj = cls()
-            obj.orders = pd.DataFrame([5], index=[extrema])
-        add_to_df(obj, container='orders', extrema=extrema, instance=1, force=True)
-        self.assertEqual(len(obj.orders), 2)
+        extrema = self.index[0]
+        add_to_df(self.object, container=self.container, extrema=extrema, instance=1, force=True)
+        self.assertEqual(len(getattr(self.object, self.container)), 2)
 
     def test_arg_container_dne(self):
         """ Assert an error is raised when container does not exist"""
         with self.assertRaises(AttributeError):
             obj = dict()
-            add_to_df(obj, "dne", "10/20/2030", 'object')
+            add_to_df(obj, "dne", "10/20/2030", self.container)
 
 
 if __name__ == '__main__':

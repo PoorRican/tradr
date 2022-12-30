@@ -1,109 +1,126 @@
+from math import nan
+from typing import List
+
 import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from analysis.trend import TrendMovement, TrendDetector, MarketTrend
+from analysis.trend import TrendDetector
+from primitives import TrendDirection, MarketTrend, Signal
+from misc import TZ
 
 
-FREQUENCIES = ('freq1', 'freq2')
+FREQUENCIES = ('15m', '1hr', '6h')
 
 
+@patch('models.Indicator.__abstractmethods__', set())
 class TrendDetectorTests(unittest.TestCase):
+    def set_indicator_attr(self, attr, values):
+        assert len(values) == len(FREQUENCIES)
+
+        for i, val in zip(FREQUENCIES, values):
+            setattr(self.detector._indicators[i], attr, MagicMock(return_value=val))
+
+    def set_indicator_computed(self, idx, signals: List['TrendDirection'], strengths: List[float]):
+        for freq, container, index in zip(self.detector._indicators.keys(),
+                                          self.detector._indicators.values(),
+                                          range(len(self.detector._indicators))):
+            for i in container.indicators:
+                i.computed = pd.DataFrame([[signals[index], strengths[index]]],
+                                          columns=['signal', 'strength'], index=[idx])
+
+    def propagate_to_indicator_df(self, idx, attr, col, values):
+        for freq, container, val in zip(self.detector._indicators.keys(),
+                                        self.detector._indicators.values(),
+                                        values):
+            point = self.market.process_point(idx, freq)
+            for i in self.detector._indicators[freq].indicators:
+                setattr(i, attr, pd.DataFrame({col: val}, index=[point]))
+
     def setUp(self) -> None:
         with patch('core.markets.GeminiMarket') as cls:
             self.market = cls()
 
         TrendDetector._frequencies = FREQUENCIES
+        self.index = pd.date_range(pd.Timestamp.now(), tz=TZ, freq='15m', periods=3)
+        self.market.translate_period = MagicMock(return_value=FREQUENCIES[-1])
         self.detector = TrendDetector(self.market)
 
-        # setup detector
-        _index = pd.MultiIndex.from_tuples(zip(FREQUENCIES, ('a', 'b')))
-        df = pd.DataFrame([(1, 2), (pd.NA, 4)], index=_index)
-        self.detector._candles = df
-
     def test_init_args(self):
-        self.assertTrue(type(self.detector._candles) == pd.DataFrame)
         self.assertEqual(tuple(self.detector._indicators.keys()), TrendDetector._frequencies)
-
-    def test_candles(self):
-        # assert func excludes missing values
-        self.assertEqual(len(self.detector.candles('freq1')), 1)
-        self.assertEqual(len(self.detector.candles('freq2')), 0)
 
     def test_develop(self):
         # mock indicators.develop(). Return predetermined df depending on freq
-        self.detector.candles = MagicMock(return_value='get_candles')
+        _candles = pd.DataFrame([0, 1, 2])
+        self.detector.candles = MagicMock(return_value=_candles)
         for container in self.detector._indicators.values():
-            container.develop = MagicMock()
+            container.update = MagicMock()
 
         # assert that develop was called n-times, where n == len(frequencies)
-        self.detector.develop()
+        self.detector.update()
         for container in self.detector._indicators.values():
-            container.develop.assert_called_with('get_candles')
-
-        # get assertion error when no candles
-        with self.assertRaises(AssertionError):
-            _candles = self.detector._candles
-            self.detector._candles = []
-            self.detector.develop()
-            self.detector._candles = _candles
-            del _candles
+            container.update.assert_called()
 
         # get assertion error when no indicators
         with self.assertRaises(AssertionError):
-            _indicators = self.detector._indicators
             self.detector._indicators = []
-            self.detector.develop()
-            self.detector._indicators = _indicators
-            del _indicators
-
-    def test_fetch(self):
-        # mock get_candles
-        _candles = pd.DataFrame({'c': [1, 'test'], 'd': [3, 4]})
-        self.detector.market.get_candles = MagicMock(return_value=_candles)
-
-        fetched = self.detector._fetch()
-
-        # assert proper multi-index columns
-        for freq in FREQUENCIES:
-            self.assertIn(freq, fetched.index)
-
-        # assert returned values
-        for freq in FREQUENCIES:
-            self.assertEqual(fetched.loc[freq, 'c'].iloc[1], 'test')
-
-    def test_update(self):
-        self.detector._fetch = MagicMock(return_value='fetched')
-        # assert `_fetch()` is called
-        self.detector.update_candles()
-        self.detector._fetch.assert_called_once()
-        self.assertEqual(self.detector._candles, 'fetched')
+            self.detector.update()
 
     def test_determine_scalar(self):
-        # mock indicator.strength()
-        # input mocked results
-        self.skipTest('Not Implemented Yet')
+        idx = self.index[-1]        # this is a placeholder since returned value is mock
+        self.market.process_point = MagicMock(return_value=idx)
+
+        # mocked up-trend
+        signals = [TrendDirection.UP, TrendDirection.CYCLE, TrendDirection.UP]
+        strengths = [2, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
+
+        # `nan` should be dropped, since `signal` value does not agree
+        self.assertEqual(3, self.detector._determine_scalar(TrendDirection.UP, idx))
+
+        # mock cycle
+        signals = [TrendDirection.CYCLE, TrendDirection.CYCLE, TrendDirection.UP]
+        strengths = [nan, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
+
+        self.assertTrue(self.detector._determine_scalar(TrendDirection.CYCLE, idx) is nan)
+
+        # mock ambiguous
+        signals = [TrendDirection.DOWN, TrendDirection.CYCLE, TrendDirection.UP]
+        strengths = [1, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
+
+        self.assertTrue(self.detector._determine_scalar(TrendDirection.CYCLE, idx) is nan)
+
+        # mock ambiguous
+        signals = [TrendDirection.DOWN, TrendDirection.DOWN, TrendDirection.UP]
+        strengths = [1, nan, 4]
+        self.set_indicator_computed(idx, signals, strengths)
+
+        self.assertEqual(1, self.detector._determine_scalar(TrendDirection.DOWN, idx))
 
     def test_characterize(self):
         # setup mock functions
-        self.detector._fetch_trends = MagicMock()
-        self.detector._determine_consensus = MagicMock(return_value=TrendMovement.UP)
+        self.detector._fetch_trend = MagicMock(return_value=TrendDirection.UP)
         self.detector._determine_scalar = MagicMock(return_value=1)
 
         trend = self.detector.characterize()
 
+        self.detector._fetch_trend.assert_called_once()
+        self.detector._determine_scalar.assert_called_once()
         self.assertIsInstance(trend, MarketTrend)
-        self.assertEqual(trend.trend, TrendMovement.UP)
+        self.assertEqual(trend.trend, TrendDirection.UP)
         self.assertEqual(trend.scalar, 1)
 
-    def test_determine_consensus(self):
-        _results = (TrendMovement.UP, TrendMovement.UP, TrendMovement.CYCLE)
+    def test_fetch_trend(self):
+        idx = self.index[-1]        # this is a placeholder since returned value is mock
+        self.set_indicator_attr('signal', [TrendDirection.UP, TrendDirection.CYCLE, TrendDirection.UP])
 
-        trend = self.detector._determine_consensus(_results)
-        self.assertIsInstance(trend, TrendMovement)
+        trend = self.detector._fetch_trend(idx)
+        self.assertIsInstance(trend, TrendDirection)
 
         # assert that highest occurring value is returned
-        self.assertEqual(trend, TrendMovement.UP)
+        self.assertEqual(trend, TrendDirection.UP)
 
 
 if __name__ == '__main__':

@@ -1,64 +1,64 @@
-from math import floor
+import concurrent.futures
+from math import ceil, nan
 import pandas as pd
-from pytz import timezone
-from typing import Mapping, Optional, NoReturn, Sequence
+from typing import Mapping, Optional, NoReturn, Union
 
-from core.market import Market
-from models.signals import IndicatorContainer, MACDRow, BBANDSRow, STOCHRSIRow, Signal
-from models.trend import TrendMovement, MarketTrend
+from core import MarketAPI
+from misc import TZ
+from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
+from models import FrequencySignal
+from primitives import TrendDirection, MarketTrend, Signal
+
+
+STRONG_THRESHOLD = 3
+""" This is a scalar value which determines whether a trend is strong or not. """
 
 
 class TrendDetector(object):
     """ An independent object that provides foresight by encapsulating analysis of market trends.
-
-    Candle data is stored internally in `_candles`
 
     Uses multiple long-term (ie: 1H, 6H, 1 day, 1 week) candle data to detect if market is trending up, down or is
     remaining constant. This data is used to better characterize enter/exit points and modulate trading amount (eg:
     buy more/sell less during downtrend, buy less/say more during uptrend).
 
     Methods:
-        - `update_candles()`:
-            Update internal candle data
         - `develop()`:
             Calculate all indicators
         - `characterize()`:
             Determine `MarketTrend` for a given point
     """
 
-    _frequencies = ('1hr', '6hr', '1day')
+    _frequencies = ('30m', '1hr', '6hr', '1day')
     """ Frequencies to use for fetching candle data.
     
     Shall be ordered from shortest-to-longest.
     """
 
-    def __init__(self, market: Market):
+    def __init__(self, market: MarketAPI, threads: int = 0, lookback: int = 1):
         super().__init__()
 
         self.market = market
+        self.threads = threads
+        self.lookback = lookback
 
-        self._candles: pd.DataFrame = pd.DataFrame()
-        """ 3-dim DataFrame of candle data incorporating multiple timeframes
-        
-        This should be updated by `update()`.
-        
-        Index timestamp. Columns frequencies. 3rd dim should be market value corresponding to index.
-        
-        Candles should be a multi-indexed `DataFrame` where primary index is the frequency (eg: 1h, 1d, etc).
-        
-        Interpolation (handled by pandas) can be used to account for missing timestamps when plotting longer timeframes.
-        Normally, missing data shall be dropped before being passed.
-        """
-
-        self._indicators: Mapping[str, 'IndicatorContainer'] = self._create_indicator_container()
+        self._indicators: Mapping[str, 'FrequencySignal'] = self._create_indicator_container()
         """ Store indicator data as a mapping where each key is a frequency.
         """
 
-    @classmethod
-    def _create_indicator_container(cls) -> Mapping[str, 'IndicatorContainer']:
+    @property
+    def graph(self):
+        return pd.concat([i.graph for i in self._indicators.values()], keys=self._frequencies)
+
+    @property
+    def computed(self):
+        return pd.concat([i.computed for i in self._indicators.values()], keys=self._frequencies)
+
+    def _create_indicator_container(self) -> Mapping[str, 'FrequencySignal']:
         indicators = {}
-        for freq in cls._frequencies:
-            indicators[freq] = IndicatorContainer([MACDRow, BBANDSRow, STOCHRSIRow])
+        for freq in self._frequencies:
+            indicators[freq] = FrequencySignal(self.market, freq,
+                                               [MACDRow(), BBANDSRow(), STOCHRSIRow()],
+                                               update=False, threads=self.threads)
         return indicators
 
     def candles(self, frequency: str) -> pd.DataFrame:
@@ -69,9 +69,9 @@ class TrendDetector(object):
         assert frequency in self._frequencies
 
         # fetch via multi-index
-        return self._candles.loc[frequency].dropna()
+        return self.market.candles(frequency)
 
-    def develop(self) -> NoReturn:
+    def update(self) -> NoReturn:
         """ Compute all indicator functions across all frequencies using existing candle data.
 
         Since smaller frequencies will have values with `NaN`, `get_candles()` must be called to drop
@@ -81,46 +81,98 @@ class TrendDetector(object):
             - Asynchronous
             - Threading
         """
-        assert len(self._candles) != 0
         assert len(self._indicators) != 0
 
-        for freq in self._frequencies:
-            self._indicators[freq].develop(self.candles(freq))
+        if self.threads:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
+                fs = []
+                for container in self._indicators.values():
+                    fs.append(executor.submit(container.update))
+                concurrent.futures.wait(fs)
+        else:
+            [container.update() for container in self._indicators.values()]
 
-    def _fetch(self) -> pd.DataFrame:
-        """ Get all candle data then combine into multi-indexed `DataFrame`.
-
-        TODO:
-            - Use `pd.infer_freq`. Fill in missing gaps to create uniform dataframe
+    def _fetch_trend(self, point: pd.Timestamp,
+                     executor: concurrent.futures.Executor = None,
+                     raw: bool = False) -> Union['TrendDirection', 'pd.Series']:
         """
-        data = []
 
-        # get candle data for all frequencies
-        for freq in self._frequencies:
-            fetched = pd.DataFrame(self.market.get_candles(freq), copy=True)
-            data.append(fetched)
+        Args:
+            point:
+                Point in time to evaluate.
+            executor:
+            raw (False):
+                Option flag to return values of all indicators instead of a singular value. This would be used for
+                masking or building a 3d-array of candles for given point. This defaults to false.
 
-        combined = pd.concat(data, keys=self._frequencies)
+        Notes:
 
-        return combined
+        Returns:
+            If `raw` is True, a `pd.Series` of `Signal` values are returned. Otherwise, the mode of such a `Series` is
+            returned.
+        """
+        if self.threads and executor is not None:
+            fs = []
+            [fs.extend(future) for future in [
+                container.func_threads('signal', executor=executor,
+                                       point=self.market.process_point(point, freq),
+                                       candles=self.candles(freq)
+                                       ) for freq, container in self._indicators.items()]]
+            signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+        else:
+            values = [container.signal(self.market.process_point(point, freq),
+                                       ) for freq, container in self._indicators.items()]
+            signals = pd.Series(values)
 
-    def _fetch_trends(self, point: pd.Timestamp = None) -> Mapping[str, 'TrendMovement']:
-        trends: Mapping['str': 'TrendMovement'] = {}
-        for freq in self._frequencies:
-            _freq = self.market.translate_period(freq)      # `DateOffset` conversion
-            result: Signal = self._indicators[freq].check(self.candles(freq), point, freq=_freq)
-            trends[freq] = TrendMovement(result)
-        return trends
+            if signals.hasnans:
+                raise RuntimeError(f"Computed indicator data for `TrendDetector` does not exist for {point}")
 
-    def update_candles(self) -> NoReturn:
-        """ Update `candles` with current market data """
-        self._candles = self._fetch()
+        if raw:
+            return signals
 
-    def _determine_scalar(self, point: Optional[pd.Timestamp] = None) -> int:
-        results = pd.Series([container.strength(point) for container in self._indicators.values()])
-        # TODO: implement scalar weight. Longer frequencies influence scalar more heavily
-        # TODO: only incorporate `strength()` from outputs from consensus
-        return int(floor(results.mean())) or 1
+        return TrendDirection(signals.mode()[0])
+
+    def _determine_scalar(self, trend: TrendDirection, point: Optional[pd.Timestamp],
+                          executor: concurrent.futures.Executor = None) -> float:
+        signal: Signal = Signal(trend)
+
+        # no strength should be returned if there is no price movement
+        if signal == Signal.HOLD:
+            return nan
+
+        # `results` holds return values of strength
+        if self.threads and executor is not None:
+            fs = []
+            [fs.extend(future) for future in [
+                container.func_threads('strength', executor=executor,
+                                       point=self.market.process_point(point, freq),
+                                       candles=self.candles(freq),
+                                       ) for freq, container in self._indicators.items()]]
+            results = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
+        else:
+            signals = []
+            strengths = []
+            for freq, container in self._indicators.items():
+                _point = self.market.process_point(point, freq)
+                _row = container.computed.loc[_point]
+
+                # hack to convert df to series returned when indexing w/ str instead of timestamp when '1D'
+                if type(_row) is pd.DataFrame:
+                    _row = _row.iloc[0]
+                _strengths = _row.xs('strength', axis='index', level=1)
+                _signals = _row.xs('signal', axis='index', level=1)
+                signals.append(_signals)
+                strengths.append(_strengths)
+
+            signals = pd.concat(signals, axis='index', ignore_index=True)
+            strengths = pd.concat(strengths, axis='index', ignore_index=True)
+            assert signals.shape == strengths.shape
+
+            # TODO: implement scalar weight where longer frequencies more heavily influence scalar value
+            _mean = strengths[signals == signal].dropna().mean()
+            if _mean < 1:
+                return 1
+            return _mean
 
     def characterize(self, point: Optional[pd.Timestamp] = None) -> MarketTrend:
         """ Characterize trend magnitude (direction and strength of trend).
@@ -139,25 +191,24 @@ class TrendDetector(object):
             -   introduce `strength` binary flag to return values based on most extreme scalar (`abs` of `strength()`)
         """
         if not point:
-            point = self._candles.iloc[-1].name
+            point = self.market.most_recent_timestamp
 
         # remove `freq` value to prevent `KeyError`
-        # TODO: is reusing the name going to affect original `point`?
         if hasattr(point, 'timestamp'):
-            point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=timezone('US/Pacific'))
+            point = pd.Timestamp.fromtimestamp(point.timestamp(), tz=TZ)
 
-        results = self._fetch_trends(point)
-        consensus = self._determine_consensus(list(results.values()))
+        # temporarily disable multithreading to fix masking of `strength` on a high level
+        if self.threads and False:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads * len(self._frequencies)) as executor:
+                _trend = executor.submit(self._fetch_trend, point, executor)
+                concurrent.futures.wait([_trend])
+                trend = _trend.result()
 
-        return MarketTrend(consensus, scalar=self._determine_scalar())
+                _strengths = executor.submit(self._determine_scalar, trend, point, executor)
+                concurrent.futures.wait([_strengths])
+                scalar = _strengths.result()
+        else:
+            trend = self._fetch_trend(point)
+            scalar = self._determine_scalar(trend, point)
 
-    @staticmethod
-    def _determine_consensus(values: Sequence['TrendMovement']) -> TrendMovement:
-        """ Return the most common value in a dict containing a list of returned results """
-        counts = {}
-        for v in TrendMovement.__members__.values():
-            counts[v] = values.count(v)
-        _max = max(counts.values())
-        i = list(counts.values()).index(_max)
-        winner = list(counts.keys())[i]
-        return winner
+        return MarketTrend(trend, scalar=scalar)

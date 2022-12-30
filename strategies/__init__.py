@@ -8,3 +8,8 @@
     To determine the fitness and performance of the trading strategy, reporting functions can the total amount of
     assets and fiat accrued. This can be used in active implementations as well as during backtesting.
 """
+from strategies.strategy import Strategy
+from strategies.financials import FinancialsMixin
+from strategies.OscillationMixin import OscillationMixin
+from strategies.StaticAlternatingStrategy import StaticAlternatingStrategy
+from strategies.ThreeProngAlt import ThreeProngAlt

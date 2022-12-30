@@ -1,13 +1,13 @@
 from abc import ABC
 import logging
-import matplotlib.pyplot as plt
-from matplotlib.colors import to_rgba
 import pandas as pd
-from typing import NoReturn
+from typing import NoReturn, Tuple, Union
 from warnings import warn
 
-from strategies.strategy import Strategy
-from models.trades import Side, SuccessfulTrade
+from misc import TZ
+from models import SuccessfulTrade
+from primitives import Side
+from strategies import Strategy
 
 
 class FinancialsMixin(Strategy, ABC):
@@ -64,7 +64,14 @@ class FinancialsMixin(Strategy, ABC):
         set accordingly dependant on asset price and supplied capital.
         """
 
-        self.capital = capital
+        # set starting date for timeseries containers
+        if len(self.candles):
+            start = self.candles.index[0]
+        else:
+            start = pd.Timestamp.now(tz=TZ)
+
+        self._capital = pd.Series(dtype=float)
+        self._capital[start] = capital
         """ Simple total of available capital to use in buying assets.
         
         This number is used to determine how much fiat currency will be used to purchase assets, and the cost of any buy
@@ -72,7 +79,8 @@ class FinancialsMixin(Strategy, ABC):
         buy orders. The value of `capital` is not used when determining profit-and-loss, as unused capital is not needed
         to be reflected in sums of order costs.
         """
-        self.assets = assets
+        self._assets = pd.Series(dtype=float)
+        self._assets[start] = assets
         """ Simple total of available assets to use when selling assets.
         
         Available assets represents a ceiling for amount of asset that can be sold.
@@ -92,6 +100,48 @@ class FinancialsMixin(Strategy, ABC):
         No more buy orders will be authorized when the returned value becomes 0.
         """
         return self.order_count - len(self.incomplete)
+
+    def _timeseries_setter(self, value: Union[float, Tuple['pd.Timestamp', float]], attr: str):
+        assert hasattr(self, attr)
+
+        if hasattr(value, '__iter__'):
+            point, val = value
+
+        else:
+            val = value
+            point = pd.Timestamp.now(tz=TZ)
+
+        getattr(self, attr)[point] = val
+
+    @property
+    def capital(self) -> float:
+        try:
+            return self._capital.iloc[-1]
+        except IndexError:
+            return 0
+
+    @capital.setter
+    def capital(self, value: Union[float, Tuple['pd.Timestamp', float]]):
+        self._timeseries_setter(value, '_capital')
+
+    @property
+    def capital_ts(self) -> pd.Series:
+        return self._capital
+
+    @property
+    def assets(self) -> float:
+        try:
+            return self._assets.iloc[-1]
+        except IndexError:
+            return 0
+
+    @assets.setter
+    def assets(self, value: Union[float, Tuple['pd.Timestamp', float]]):
+        self._timeseries_setter(value, '_assets')
+
+    @property
+    def assets_ts(self) -> pd.Series:
+        return self._assets
 
     @property
     def starting(self) -> float:
@@ -126,35 +176,43 @@ class FinancialsMixin(Strategy, ABC):
         sell_cost = sell_orders['cost'].sum()
         return sell_cost - buy_cost
 
-    def _adjust_capitol(self, trade: SuccessfulTrade) -> NoReturn:
+    def _adjust_capital(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
         """ Increase available capital when assets are sold, and decrease when assets are bought.
         """
         assert trade.side in (Side.BUY, Side.SELL)
+        if extrema is None:
+            extrema = pd.Timestamp.now(tz=TZ)
 
         if trade.side is Side.BUY:
-            self.capital -= trade.cost
+            _capital = self.capital - trade.cost
 
-            if self.capital < 0:
+            if _capital < 0:
                 msg = "Accumulated capital has been set to a negative value"
                 warn(msg)
                 logging.warning(msg)
         else:
-            self.capital += trade.cost
+            _capital = self.capital + trade.cost
 
-    def _adjust_assets(self, trade: SuccessfulTrade) -> NoReturn:
+        self._capital[extrema] = _capital
+
+    def _adjust_assets(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
         """ Increase available assets when bought, and decrease when sold.
         """
         assert trade.side in (Side.BUY, Side.SELL)
+        if extrema is None:
+            extrema = pd.Timestamp.now(tz=TZ)
 
         if trade.side is Side.BUY:
-            self.assets += trade.amt
+            _assets = self.assets + trade.amt
         else:
-            self.assets -= trade.amt
+            _assets = self.assets - trade.amt
 
-            if self.assets < 0:
+            if _assets < 0:
                 msg = "Assets amount has been set to a negative value"
                 warn(msg)
                 logging.warning(msg)
+
+        self._assets[extrema] = _assets
 
     def unpaired(self) -> pd.DataFrame:
         """ Select of unpaired orders by cross-referencing `incomplete`.
@@ -196,24 +254,32 @@ class FinancialsMixin(Strategy, ABC):
             Value of unsold assets sold at most expensive price.
         """
         unpaired = self.unpaired()
+
+        if unpaired.empty:
+            return 0
+
+        _last_order = self.orders.tail(1)
+        # NOTE: indexing `_last_order` does not return literals but instead returns rows and columns
+        if Side.BUY in _last_order['side'] and not _last_order['id'].isin(unpaired['id']).max():
+            unpaired = pd.concat([unpaired, _last_order], ignore_index=True)
         highest = max(unpaired['rate'])
         return unpaired['amt'].sum() * highest
 
-    def _post_sale(self, trade: SuccessfulTrade) -> NoReturn:
+    def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade) -> NoReturn:
         """ Handle mundane accounting functions for when a sale completes.
 
         After a sale, sold assets are dropped or deducted from `incomplete` container, and then
         `capital` and `assets` values are adjusted.
         """
         self._clean_incomplete(trade)
-        self._adjust_capitol(trade)
-        self._adjust_assets(trade)
+        self._adjust_capital(trade, extrema)
+        self._adjust_assets(trade, extrema)
 
     def _handle_inactive(self, row: pd.Series) -> NoReturn:
         """ Add incomplete order to `incomplete` container.
 
-        Inactivity is defined by `OscillatingStrategy.timeout` and is checked during
-        `OscillatingStrategy._oscillation()`.
+        Inactivity is defined by `OscillationMixin.timeout` and is checked during
+        `OscillationMixin._oscillation()`.
 
         Args:
             row:
@@ -297,24 +363,3 @@ class FinancialsMixin(Strategy, ABC):
                 self.incomplete.loc[self.incomplete['id'] == order['id'], 'amt'] = _remaining
 
         self.incomplete.drop(index=_drop, inplace=True)
-
-    def plot(self, size: int = 5000):
-        """ Plot trade enter and exit points as an overlay to market data.
-
-        Args:
-            size:
-                Scalar multiplier for marker size. Since marker size corresponds to amount of assets traded, this should
-                be larger for assets of larger values as for a fixed price asset value and amount are inversely
-                proportional (and therefore may be less than one).
-
-        TODO:
-            - subgraph which shows assets/capital
-            - dynamically calculate scalar for marker size
-        """
-        o = self.orders
-        sells = o[o['side'] == -1]
-        buys = o[o['side'] == 1]
-        plt.figure(figsize=[50, 25], dpi=250)
-        plt.plot(self.market.data.index, self.market.data['close'], color=to_rgba('red', 0.5))
-        plt.scatter(buys.index, buys['rate'], buys['amt'] * size, marker="^", color=to_rgba('green', .8))
-        plt.scatter(sells.index, sells['rate'], sells['amt'] * size, marker="v", color=to_rgba('blue', 1))

@@ -2,7 +2,8 @@ import pandas as pd
 from strategies.strategy import Strategy
 from core import Market
 from typing import Union, Tuple
-from models.trades import Side
+
+from primitives import Side
 
 
 class StaticAlternatingStrategy(Strategy):

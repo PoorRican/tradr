@@ -3,14 +3,15 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Union, Optional, Dict
+from typing import Union, Optional
 import pandas as pd
 import requests
 import logging
 
-from models.data import json_to_df, DATA_ROOT
 from core.MarketAPI import MarketAPI
-from models.trades import Trade, SuccessfulTrade
+from misc import TZ
+from primitives import ReasonCode
+from models import json_to_df, Trade, SuccessfulTrade, FailedTrade
 
 
 class GeminiMarket(MarketAPI):
@@ -55,12 +56,7 @@ class GeminiMarket(MarketAPI):
     _SECRET_FN = "gemini_api.yml"
     _INSTANCES_FN = "gemini_instances.yml"
 
-    def __init__(self, api_key: str = None, api_secret: str = None,
-                 freq: str = '15m', symbol: str = 'btcusd',
-                 root: str = DATA_ROOT, update=True, ):
-        super().__init__(api_key=api_key, api_secret=api_secret, freq=freq, root=root, update=update, symbol=symbol)
-
-    def get_fee(self) -> float:
+    def _get_fee(self) -> float:
         """ Retrieve current transaction fee.
 
         Notes:
@@ -84,15 +80,20 @@ class GeminiMarket(MarketAPI):
 
         """
         endpoint = '/v1/notionalvolume'     # noqa
-        response = self.post(endpoint)
-        try:
-            return response['api_taker_fee_bps'] / 100
-        except KeyError:
-            logging.warning("`MarketAPI.calc_fee` has no value for `fee`")
-            return 0.35
 
-    def get_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
-        """ Retrieve candle data.
+        try:
+            response = self._post(endpoint)
+            try:
+                return response['api_taker_fee_bps'] / 100
+            except KeyError:
+                logging.warning("`MarketAPI.calc_fee` has no value for `fee`")
+        except ConnectionError:
+            logging.warning("Deferring to hard-coded value")
+
+        return 0.35
+
+    def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+        """ Low-level function to retrieve candle data.
 
         Ticker frequency is determined by `self.freq` and notated on return type via the `DataFrame.attrs` convention.
         This metadata can be referenced later by the qualitative infrastructure.
@@ -118,22 +119,25 @@ class GeminiMarket(MarketAPI):
             Ticker data translated to `DataFrame` time-series.
 
         """
-        if not freq:
-            freq = self.freq
         assert freq in self.valid_freqs
 
         response = requests.get(self.BASE_URL + f"/v2/candles/{self.symbol}/{freq}")
-        btc_candle_data = response.json()
-        data = json_to_df(btc_candle_data)
+        raw_candle_data = response.json()
+        if type(raw_candle_data) is dict\
+                and 'result' in raw_candle_data.keys()\
+                and raw_candle_data['result'] == 'error':
+            raise ConnectionError(raw_candle_data['message'])
+        data = json_to_df(raw_candle_data)
 
         # reverse so data is ascending (oldest to most recent)
-        # TODO: check that GeminiAPI has correct order of data in unittests
         data = data.iloc[::-1]
         assert data.iloc[0].name < data.iloc[-1].name
 
         # set flag/metadata on `DataFrame`
+        # TODO: use pandas' built-in `freq` value for index
         data.attrs['freq'] = freq
-        data.index = data.index.tz_localize('US/Pacific', ambiguous='infer')
+        data.index = data.index.tz_localize(TZ, ambiguous='infer')
+
         return data
 
     def get_orderbook(self) -> dict:
@@ -161,7 +165,7 @@ class GeminiMarket(MarketAPI):
         response = requests.get(self.BASE_URL + f"/v1/book/{self.symbol}")
         return response.json()
 
-    def post(self, endpoint: str, data: dict = None) -> dict:
+    def _post(self, endpoint: str, data: dict = None) -> Union[dict, 'ReasonCode']:
         """ Access private API endpoints.
 
         Handles payload encapsulation in accordance with API docs.
@@ -189,11 +193,14 @@ class GeminiMarket(MarketAPI):
             "Cache-Control": "no-cache"
         }
 
-        response = requests.post(self.BASE_URL + endpoint, headers=headers, data=None)
+        try:
+            response = requests.post(self.BASE_URL + endpoint, headers=headers, data=None)
+        except ConnectionError:
+            return ReasonCode.POST_ERROR
 
         return response.json()
 
-    def _convert(self, response: dict, trade: Trade) -> 'SuccessfulTrade':
+    def _translate(self, response: dict, trade: Trade) -> 'SuccessfulTrade':
         """ Translate exchange response into `SuccessfulTrade`.
 
         Notes:
@@ -218,7 +225,7 @@ class GeminiMarket(MarketAPI):
         _id = response['order_id']
         return SuccessfulTrade(amount, rate, trade.side, id=_id)
 
-    def place_order(self, trade: Trade) -> Union['SuccessfulTrade', 'False']:
+    def post_order(self, trade: Trade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Places an order - specifically a Fill-or-Kill Limit Order.
 
         Notes:
@@ -247,11 +254,14 @@ class GeminiMarket(MarketAPI):
             'options': ["fill-or-kill"]
         }
 
-        response = self.post("/v1/order/new", data)
-        if not response['is_cancelled']:  # order was fulfilled
-            return self._convert(response, trade)
+        response: Union[dict, 'ReasonCode'] = self._post("/v1/order/new", data)
+        if type(response) is ReasonCode:
+            _reason = response
+        elif not response['is_cancelled']:  # order was fulfilled
+            return self._translate(response, trade)
         else:
-            return False
+            _reason = ReasonCode.MARKET_REJECTED
+        return FailedTrade.convert(trade, _reason)
 
     def translate_period(self, freq: str) -> str:
         """ Converts Gemini candle interval to a valid value for `pandas.DateOffset`.
@@ -286,3 +296,43 @@ class GeminiMarket(MarketAPI):
             return freq[:-2] + 'H'
         else:
             return '1D'
+
+    def process_point(self, point: pd.Timestamp, freq: str) -> Union['pd.Timestamp', str]:
+        """ Quantize and shift timestamp `point` for parsing market specific data.
+
+        Used for indexing higher level frequencies. Frequency needs to be modified before accessing indicator graphs. A
+        pandas unit of frequency to select indicator data from greater time frequencies needs to be passed as `point`.
+        Used by `TrendDetector` to prevent `KeyError` from being raised during simulation arising from larger timeframes
+        of stored candle data (ie: 1day, 6hr, or 1hr) and smaller timeframes used by strategy/backtesting functions
+        (ie: '15min'). If passed, `point` is rounded down to the largest frequency less than `point` (eg: 14:45 becomes
+        14:00). If not passed, `point` is untouched.
+
+        Notes:
+            Specific times and offsets are market dependent. Function is currently set for the Gemini platform. In the
+            future, this function will be migrated and declared `MarketAPI` but defined in specific platform instances.
+
+        Args:
+            point:
+                timestamp to use to index `_indicators`
+            freq:
+                Unit of time to quantize to. Should be written
+        """
+        # modify `point` to access correct timeframe
+        _freq = self.translate_period(freq)      # `DateOffset` conversion
+        _point = point.floor(_freq, nonexistent='shift_backward')
+        if _freq == '6H':
+            if _point.dst():
+                _point -= pd.DateOffset(hours=3)
+            else:
+                _point -= pd.DateOffset(hours=4)
+            _point = _point.floor('H', nonexistent='shift_backward')
+        elif _freq == '1D':
+            # check if data for current day exists
+            _str = _point.strftime('%m/%d/%Y')
+            if _str in self.candles(freq).index:   # generically select data
+                return _str
+
+            _point -= pd.DateOffset(days=1)
+            _point = _point.strftime('%m/%d/%Y')          # generically select data
+
+        return _point

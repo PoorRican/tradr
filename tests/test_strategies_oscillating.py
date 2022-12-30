@@ -5,22 +5,26 @@ from pytz import timezone
 
 from core.markets.GeminiMarket import GeminiMarket
 from core.markets.SimulatedMarket import SimulatedMarket
-from models.signals import Signal, IndicatorContainer
-from models.trades import Side
-from strategies.OscillatingStrategy import OscillatingStrategy
+from models import FrequencySignal, FailedTrade, FutureTrade
+from primitives import Signal, Side, ReasonCode, TrendDirection
+from strategies.OscillationMixin import OscillationMixin
 
 
-class MainOscillatingStrategyTests(unittest.TestCase):
-    @patch("strategies.OscillatingStrategy.OscillatingStrategy.__abstractmethods__", set())
+class BaseOscillatingStratTests(unittest.TestCase):
+    @patch("strategies.OscillationMixin.__abstractmethods__", set())
     def setUp(self) -> None:
-        mark = GeminiMarket(update=False)
+        freq = '15m'
+        mark = MagicMock(spec=GeminiMarket)
         self.market = SimulatedMarket(mark)
-        self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=(), threshold=0.1, capital=100)
+        self.market.translate_period = MagicMock(return_value=freq)
+        self.strategy = OscillationMixin(market=self.market, freq=freq,
+                                         indicators=[], threshold=0.1, capital=100)
 
+
+class MainOscillatingStrategyTests(BaseOscillatingStratTests):
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
-        self.assertIsInstance(self.strategy.indicators, IndicatorContainer)
+        self.assertIsInstance(self.strategy.indicators, FrequencySignal)
         # TODO: assert `indicators` param gets passed to `IndicatorContainer`
 
     def test_check_timeout(self):
@@ -64,30 +68,34 @@ class MainOscillatingStrategyTests(unittest.TestCase):
         self.assertTrue(self.strategy._oscillation(Signal.BUY))
 
 
-class DeterminePositionTests(unittest.TestCase):
-    @patch("strategies.OscillatingStrategy.OscillatingStrategy.__abstractmethods__", set())
-    def setUp(self) -> None:
-        mark = GeminiMarket(update=False)
-        self.market = SimulatedMarket(mark)
-        self.strategy = OscillatingStrategy(market=self.market,
-                                            indicators=(), threshold=0.1, capital=100)
-                                            
+class DeterminePositionTests(BaseOscillatingStratTests):
     def test_point(self):
         """ Assert passed argument and default value are handled correctly """
 
         self.strategy._oscillation = MagicMock(return_value=True)
         self.strategy._is_profitable = MagicMock(return_value=True)
-        self.strategy.indicators.check = MagicMock(return_value=Signal.SELL)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.SELL)
+        self.strategy._calc_amount = MagicMock(return_value=1)
+        self.strategy._calc_rate = MagicMock(return_value=1)
 
         import datetime as dt
         index = [pd.Timestamp(dt.datetime.now() - dt.timedelta(hours=i)) for i in range(10)]
         index.reverse()
-        self.market.data = pd.DataFrame({'blah': 'blah'}, index=index)
-        self.assertEqual(self.strategy._determine_position(), (Signal.SELL, index[-1]))
-        self.assertEqual(self.strategy._determine_position(point=index[5]), (Signal.SELL, index[5]))
+
+        self.market._data = pd.DataFrame({'blah': 'blah'}, index=index)
+
+        # Test when `point` is not passed
+        result = self.strategy._determine_position()
+        expected = index[-1]
+        self.assertEqual(result.point, expected)
+
+        # Test when `point` is passed
+        expected = index[5]
+        result = self.strategy._determine_position(point=expected)
+        self.assertEqual(result.point, expected)
 
     def test_false_on_hold(self):
-        self.strategy.indicators.check = MagicMock(return_value=Signal.HOLD)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.HOLD)
 
         # assert false when `check()` returns `Signal.HOLD`
         self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
@@ -95,31 +103,47 @@ class DeterminePositionTests(unittest.TestCase):
     def test_oscillation(self):
         """ Test when out of sync with oscillation. """
         self.strategy._oscillation = MagicMock(return_value=False)
-        self.strategy.indicators.check = MagicMock(return_value=NotImplemented)
+        self.strategy.indicators.signal = MagicMock(return_value=NotImplemented)
 
         # assert false when `Signal.BUY/SELL`, but `_oscillation()` is False
         self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
 
     def test_not_profitable(self):
-        """ Test when trade is not profitable """
+        """ Test when sale is not profitable """
         self.strategy._oscillation = MagicMock(return_value=True)
         self.strategy._is_profitable = MagicMock(return_value=False)
-        self.strategy.indicators.check = MagicMock(return_value=Signal.SELL)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.SELL)
+        self.strategy._calc_amount = MagicMock(return_value=1)
+        self.strategy._calc_rate = MagicMock(return_value=1)
 
         # assert false when `_oscillation()` is True, but `_is_profitable()` is False
-        self.assertFalse(self.strategy._determine_position(point=pd.Timestamp.now()))
+        result = self.strategy._determine_position(point=pd.Timestamp.now())
+        self.assertFalse(result)
+        self.assertIsInstance(result, FutureTrade)
+        self.assertIs(result.load, ReasonCode.NOT_PROFITABLE)
 
-    def test_return_structure(self):
+    def test_return_value(self):
         """ Assert correct return structure """
         self.strategy._oscillation = MagicMock(return_value=True)
         self.strategy._is_profitable = MagicMock(return_value=True)
-        self.strategy.indicators.check = MagicMock(return_value=Signal.BUY)
+        self.strategy.indicators.signal = MagicMock(return_value=Signal.BUY)
+        self.strategy._calc_amount = MagicMock(return_value=1)
+        self.strategy._calc_rate = MagicMock(return_value=2)
 
         import datetime as dt
         now = pd.Timestamp(dt.datetime.now())
         then = now - dt.timedelta(hours=1)
         self.market.data = pd.DataFrame(index=[then, now])
-        self.assertEqual(self.strategy._determine_position(then), (Signal.BUY, then))
+
+        result = self.strategy._determine_position(then)
+
+        # check returned type
+        self.assertIsInstance(result, FutureTrade)
+        self.assertTrue(result.attempt)
+        self.assertEqual(then, result.point)
+        self.assertEqual(Side(Signal.BUY), result.side)
+        self.assertEqual(1, result.amt)
+        self.assertEqual(2, result.rate)
 
 
 if __name__ == '__main__':

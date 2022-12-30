@@ -1,15 +1,15 @@
+import logging
+from math import ceil, isnan, nan
 import pandas as pd
-from typing import Sequence, Union
-from warnings import warn
+from typing import Sequence, Union, List
 
-from analysis.trend import TrendDetector
-from models.signals import MACDRow, BBANDSRow, STOCHRSIRow
-from models.trades import Side
-from models.trend import TrendMovement
-from strategies.OscillatingStrategy import OscillatingStrategy
+from analysis.trend import TrendDetector, STRONG_THRESHOLD
+from models.indicators import *
+from strategies.OscillationMixin import OscillationMixin
+from primitives import Side, TrendDirection
 
 
-class ThreeProngAlt(OscillatingStrategy):
+class ThreeProngAlt(OscillationMixin):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
 
     Foresight from `TrendDetector` is incorporated into `_calc_amount()` and `_is_profitable()` is overwritten.
@@ -50,10 +50,10 @@ class ThreeProngAlt(OscillatingStrategy):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        _indicators: Sequence = [BBANDSRow, MACDRow, STOCHRSIRow]
+        _indicators: List = [BBANDSRow(), MACDRow(), STOCHRSIRow()]
         super().__init__(indicators=_indicators, **kwargs)
 
-        self.detector = TrendDetector(self.market)
+        self.detector = TrendDetector(self.market, threads=self.threads)
         """ Sensor-like class that detects market trends through the `characterize()` method.
         
         Calculation of indicator data should be performed by a threaded-routine managed by startup level scheduler.
@@ -86,9 +86,15 @@ class ThreeProngAlt(OscillatingStrategy):
         else:
             third = 'low'
 
-        return self.market.data.loc[extrema][['open', 'close', third]].mean()
+        return self.candles.loc[extrema][['open', 'close', third]].mean()
 
     def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
+        _trend = self.detector.characterize(extrema)
+
+        # default to a scalar of 1 during `CYCLE` since future cannot be determined.
+        if isnan(_trend.scalar):
+            _trend.scalar = 1
+
         if self.orders.empty:
             assert side == Side.BUY
             last_order = {'amt': 0, 'side': Side.SELL}
@@ -96,44 +102,42 @@ class ThreeProngAlt(OscillatingStrategy):
             last_order = self.orders.iloc[-1]
 
         rate = self._calc_rate(extrema, side)
+        _more = 1 + (_trend.scalar / 10)
+        _less = 1 - (_trend.scalar / 10)
         if side == Side.SELL:
             incomplete = self._check_unpaired(rate)
 
             total = last_order['amt'] + incomplete['amt'].sum()
 
-            # modulate amount based on market trend
-
-            # TODO: add partially sold buys when orders post using this
-
-            _trend = self.detector.characterize(extrema)
             # sell more during strong uptrend
-            if _trend.trend is TrendMovement.UP:
-                return total * _trend.scalar
+            if _trend.trend is TrendDirection.UP:
+                return total * _more
             # sell less during strong downtrend
-            elif _trend.trend is TrendMovement.DOWN:
-                return total / _trend.scalar
+            elif _trend.trend is TrendDirection.DOWN:
+                return total / _less
 
             if total > self.assets:
-                warn("Calculated total of assets to sell exceeds actual total")
                 return self.assets
             return total
 
         if side == Side.BUY:
             amt = self.starting / rate
 
-            # modulate amount based on market trend
-            _trend = self.detector.characterize(extrema)
-
             # buy less during strong uptrend; buy more during strong downtrend
-            if _trend.trend is TrendMovement.UP:
-                return amt / _trend.scalar
-            elif _trend.trend is TrendMovement.DOWN:
-                return amt * _trend.scalar
+            if _trend.trend is TrendDirection.UP:
+                return amt / _less
+            elif _trend.trend is TrendDirection.DOWN:
+                return amt * _more
 
             if self.capital < amt * rate:
-                warn("Calculated amount of assets to buy exceeds amount of available capital")
                 return self.capital / rate
             return amt
+
+    @staticmethod
+    def _incorrect_trade(trend, side) -> bool:
+        return trend.scalar > STRONG_THRESHOLD and \
+               ((trend.trend is TrendDirection.UP and side is Side.BUY) or
+                (trend.trend is TrendDirection.DOWN and side is Side.SELL))
 
     def _is_profitable(self, amount: float, rate: float, side: Side,
                        extrema: Union['pd.Timestamp', str] = None) -> bool:
@@ -147,19 +151,29 @@ class ThreeProngAlt(OscillatingStrategy):
         """
         assert side in (Side.BUY, Side.SELL)
 
-        # prevent incorrect trades during strong trend
+        if isnan(amount):
+            return False
+
         _trend = self.detector.characterize(extrema)
-        if _trend.scalar > 3 and \
-           (_trend.trend is TrendMovement.UP and side is Side.BUY) or \
-           (_trend.trend is TrendMovement.DOWN and side is Side.SELL):
+
+        # prevent incorrect trades during strong trend
+        if self._incorrect_trade(_trend, side):
+            logging.warning(f'Prevented unaligned trade during strong trend @ {extrema}')
             return False
 
         if side == Side.BUY:
+            # TODO: add delay after sell. Take strength into account.
             return True
         else:
+            # prevent false positive from incomplete buys
+            last_order = self.orders.iloc[-1]
+            if last_order['side'] == Side.BUY and last_order['amt'] < amount and \
+               self._calc_profit(last_order['amt'], rate) < self.threshold:
+                return False
+
             # handle sell
-            if _trend.trend == TrendMovement.UP:
-                _min_profit = self.threshold * _trend.scalar * _trend.scalar
+            if _trend.trend == TrendDirection.UP:
+                _min_profit = self.threshold * _trend.scalar
             else:
                 _min_profit = self.threshold
             return self._calc_profit(amount, rate) >= _min_profit
