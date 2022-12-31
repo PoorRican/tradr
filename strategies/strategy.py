@@ -17,19 +17,20 @@ class Strategy(StoredObject, ABC):
         Performs computation necessary to determine when and how much to trade. Inherited instances should
         define a profitable trade, when and how many trades of a certain type should be executed,
         and the amount of an asset to trade at a single time. Strategies should also determine a minimum amount of
-        an asset to hold. In essence, `Strategy` controls the trading process which is ~currently~ synchronous and
-        occurs as follows:
+        an asset to hold.
 
-            -   `process()` calls `determine_position` which determines what action should be taken, called `position`.
-                The outcome of `process()` returns a boolean value.
-            -   if `position` is "truthy", it contains values `side` (type of action to be taken), and `extrema` (the
-                point in the time-series responsible for initiating a `signal`).
-            -   If an action has already not been executed regarding the given `extrema`, either `_buy()` or `_sell()`
-                are called, dependent on the value of `side`.
-            -   Both `_buy()/_sell()` call `_add_order()`. Rate, and amount are determined in `_add_order()`.
-            -   `add_order()` calls `market.place_order()` with a `Trade` as an argument to interact with the market.
-                If order is accepted by the market, it is converted to a `SuccessfulTrade`, otherwise becomes `False`
-                and the result is passed up. Note that `process()` returns a boolean regardless of the outcome.
+        The trading process is controlled in the following way:
+
+            -   `process()` calls `_determine_position()` which determines what action should be taken, and either
+                returns `False` or proposes a `FutureTrade`. A `FutureTrade` might already be flagged to not be executed
+                and is False when cast as a boolean. No further action is taken, and it is stored in `failed_orders`.
+            -   If `FutureTrade` is "truthy" when cast, and no other trade exists for a given point in time,
+                either `_buy()` or `_sell()` are called, dependent on the value of `side`. The `FutureTrade` is
+                passed to `_add_order()` regardless of `side`.
+            -   `_add_order()` calls `market.place_order()` with a `Trade` as an argument to interact with the market.
+                If order is accepted by the market, it is converted to a `SuccessfulTrade`, otherwise becomes
+                `FailedTrade` and the result is passed up. Note that `process()` returns a boolean regardless of the
+                outcome.
 
         To determine the fitness and performance of the trading strategy, reporting functions show the total amount of
         assets and fiat accrued. This can be used in active implementations as well as during backtesting.
@@ -108,25 +109,44 @@ class Strategy(StoredObject, ABC):
         """ Create and send order to market, then store in history.
 
         Not all orders will post, so only orders that are executed (accepted by the market) are stored.
-        However, for the purposes of debugging, failed orders are stored.
+        For the purposes of debugging, analysis, and investigation, failed orders are stored.
 
         Returns:
             `SuccessfulTrade` (returned from `market.place_order()`) if market accepted trade
             `False` if trade was rejected by market there was an error storing
         """
-        trade, extrema = trade.separate()
+        _trade, extrema = trade.separate()
 
-        result: Union[SuccessfulTrade, FailedTrade] = self.market.post_order(trade)
-        if result:
-            self._post_sale(extrema, result)
-            add_to_df(self, 'orders', extrema, result)
-        else:
-            add_to_df(self, 'failed_orders', extrema, result)
+        result: Union[SuccessfulTrade, FailedTrade] = self.market.post_order(_trade)
+        self._store_order(result, extrema)
         return result
+
+    def _store_order(self, trade: Union['FutureTrade', 'FailedTrade', 'SuccessfulTrade'],
+                     extrema: pd.Timestamp = None):
+        """ Manage trade storage.
+
+        Notes:
+            This should be the only function that calls `add_to_df`.
+
+        Args:
+            trade:
+                May be any derived class of `Trade`. However, if not `FutureTrade`, then `extrema`
+                must be passed.
+        """
+        if type(trade) is FutureTrade:
+            _trade, extrema = trade.separate()
+        else:
+            assert extrema is not None
+            _trade = trade
+
+        if _trade:
+            self._post_sale(extrema, _trade)
+            add_to_df(self, 'orders', extrema, _trade)
+        else:
+            add_to_df(self, 'failed_orders', extrema, _trade)
 
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
-
 
         Notes:
             This method is the main interface method for automated trading. This function called
@@ -149,7 +169,7 @@ class Strategy(StoredObject, ABC):
 
         Returns:
             If algorithm decided to place an order, the result of order execution is returned.
-            Otherwise, `False` is returned by default
+            Otherwise, `False` is returned by default.
         """
         result: Union['FutureTrade', 'False'] = self._determine_position(point)
 
@@ -169,14 +189,14 @@ class Strategy(StoredObject, ABC):
             else:
                 # `FutureTrade` is False if a trade has been initiated but will not be attempted.
                 #   This occurs when trade is not profitable, so it will be logged.
-                add_to_df(self, 'failed_orders', result.point, result.convert())
+                self._store_order(result)
         return False
 
     @abstractmethod
     def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """ Calculate rate for trade.
 
-        This method should return the same value for given parameters.
+        This method should return the same value for given parameters, but should only be calculated once.
 
         Args:
             extrema: Index/timestamp which triggered trade.
@@ -191,11 +211,13 @@ class Strategy(StoredObject, ABC):
     def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
         """ Calculate amount for trade.
 
-        This method should return the same value for given parameters.
+        This method should return the same value for given parameters, but should only be calculated once.
 
          Args:
-            extrema: Index/timestamp which triggered trade.
-            side: Type of trade. May be 'buy'/'sell'
+            extrema:
+                Index/timestamp which triggered trade.
+            side:
+                Type of trade. May be 'buy'/'sell'
 
         Returns:
             Amount of asset to trade
@@ -203,17 +225,15 @@ class Strategy(StoredObject, ABC):
         pass
 
     def _buy(self, trade: FutureTrade) -> bool:
-        """
-        Attempt to perform buy.
+        """ Attempt to execute buy order.
 
         Notes:
             Called by `process` and calls `_add_order()` which sends directly to `market`. Therefore, profitability must
             be determined *before* this function is called.
 
         Args:
-            extrema:
-                Timestamp at which extrema occurred. This prevents multiple orders being placed for the same extrema
-                (local min or max).
+            trade:
+                Proposed buy to be attempted.
 
         Returns:
             Outcome of order is returned:
@@ -228,17 +248,15 @@ class Strategy(StoredObject, ABC):
         return bool(accepted)
 
     def _sell(self, trade: FutureTrade) -> bool:
-        """
-        Attempt to perform sell.
+        """ Attempt to execute sell order.
 
-        Profitability must be determined *before* this function is called.
-
-        Price at which to perform buy is determined by market last market frame. The amount traded is static.
+        Notes:
+            Called by `process` and calls `_add_order()` which sends directly to `market`. Therefore, profitability must
+            be determined *before* this function is called.
 
         Args:
-            extrema:
-                Timestamp at which extrema occurred. This prevents multiple orders being placed for the same extrema
-                (local min or max).
+            trade:
+                Proposed sale to be attempted.
 
         Returns:
             Outcome of order is returned:
@@ -260,9 +278,12 @@ class Strategy(StoredObject, ABC):
         This function is the final decision maker for whether an order should be attempted or not.
 
         Args:
-            amount: amount of asset to be traded
-            rate: rate of exchange
-            side: buy or sell
+            amount:
+                amount of asset to be traded
+            rate:
+                rate of exchange
+            side:
+                buy or sell
 
         Returns:
             Determination whether trade should be executed is binary. It is either profitable or not.
@@ -292,13 +313,14 @@ class Strategy(StoredObject, ABC):
         """ Determine whether buy or sell order should be executed.
 
         Args:
-            extrema: Used in backtesting to simulate time
+            extrema:
+                Used in backtesting to simulate time. If not provided, the last available candle data is used.
 
         Returns:
-            If a valid extrema is found, returns a tuple with decision ('buy'/'sell') and extrema.
+            If a valid extrema is found, returns a `FutureTrade` which includes `side`. `FutureTrade`
+            may be used in an `if/else` statement to determine if trade should be attempted or not.
 
-            Otherwise, if no valid extrema is found, `False, False` is returned. Tuple is returned to prevent
-            an `TypeError` from being raised when unpacking non-iterable bool.
+            Otherwise, if no valid extrema is found, `False` is returned.
         """
         pass
 
