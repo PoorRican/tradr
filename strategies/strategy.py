@@ -108,21 +108,41 @@ class Strategy(StoredObject, ABC):
         """ Create and send order to market, then store in history.
 
         Not all orders will post, so only orders that are executed (accepted by the market) are stored.
-        However, for the purposes of debugging, failed orders are stored.
+        For the purposes of debugging, analysis, and investigation, failed orders are stored.
 
         Returns:
             `SuccessfulTrade` (returned from `market.place_order()`) if market accepted trade
             `False` if trade was rejected by market there was an error storing
         """
-        trade, extrema = trade.separate()
+        _trade, extrema = trade.separate()
 
-        result: Union[SuccessfulTrade, FailedTrade] = self.market.post_order(trade)
-        if result:
-            self._post_sale(extrema, result)
-            add_to_df(self, 'orders', extrema, result)
-        else:
-            add_to_df(self, 'failed_orders', extrema, result)
+        result: Union[SuccessfulTrade, FailedTrade] = self.market.post_order(_trade)
+        self._store_order(result, extrema)
         return result
+
+    def _store_order(self, trade: Union['FutureTrade', 'FailedTrade', 'SuccessfulTrade'],
+                     extrema: pd.Timestamp = None):
+        """ Manage trade storage.
+
+        Notes:
+            This should be the only function that calls `add_to_df`.
+
+        Args:
+            trade:
+                May be any derived class of `Trade`. However, if not `FutureTrade`, then `extrema`
+                must be passed.
+        """
+        if type(trade) is FutureTrade:
+            _trade, extrema = trade.separate()
+        else:
+            assert extrema is not None
+            _trade = trade
+
+        if _trade:
+            self._post_sale(extrema, _trade)
+            add_to_df(self, 'orders', extrema, _trade)
+        else:
+            add_to_df(self, 'failed_orders', extrema, _trade)
 
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
@@ -169,7 +189,7 @@ class Strategy(StoredObject, ABC):
             else:
                 # `FutureTrade` is False if a trade has been initiated but will not be attempted.
                 #   This occurs when trade is not profitable, so it will be logged.
-                add_to_df(self, 'failed_orders', result.point, result.convert())
+                self._store_order(result)
         return False
 
     @abstractmethod
