@@ -1,8 +1,9 @@
-import datetime
 from abc import ABC, abstractmethod
+import datetime
 import logging
-import pandas as pd
 from os import path
+import pandas as pd
+from pytz import timezone
 from typing import Dict, List, NoReturn, Union, Optional, Tuple
 from yaml import safe_dump, safe_load
 import warnings
@@ -65,6 +66,8 @@ class MarketAPI(Market, ABC):
         """
         super().__init__(symbol, **kwargs)
 
+        self._tzname: str = str(TZ)
+
         self.api_key = api_key
         self.api_secret = api_secret
         if api_secret is not None:
@@ -100,6 +103,14 @@ class MarketAPI(Market, ABC):
                 stale.append(freq)
 
         return tuple(stale)
+
+    @property
+    def tz(self) -> timezone:
+        return timezone(self._tzname)
+
+    @tz.setter
+    def tz(self, val: timezone) -> NoReturn:
+        self._tzname = str(val)
 
     def _check_candle_age(self, frequency: str = None, now: datetime.datetime = None) -> bool:
         """ Check if candle data is expired.
@@ -208,6 +219,7 @@ class MarketAPI(Market, ABC):
         """
         print("Beginning update")
         self.load()
+        self._check_tz()
 
         try:
             _data = []
@@ -315,3 +327,12 @@ class MarketAPI(Market, ABC):
             Quantized and shifted pd.Timestamp (or str if `freq='1D'`
         """
         pass
+
+    def _check_tz(self) -> NoReturn:
+        """ Convert current timezone of existing candle data to new timezone. """
+        if self.tz != TZ:
+            for freq in self.valid_freqs:
+                candles: pd.DataFrame = self.candles(freq)
+                candles.index = candles.index.tz_convert(TZ)
+
+            self.tz = TZ

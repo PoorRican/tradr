@@ -1,10 +1,9 @@
+import time
 from os import path
-
 from pytz import timezone
 
 
-TZ_NAME = 'US/Pacific'
-TZ = timezone(TZ_NAME)
+TZ = timezone(time.tzname[0])
 
 
 def _project_root() -> str:
