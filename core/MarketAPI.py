@@ -329,7 +329,18 @@ class MarketAPI(Market, ABC):
         pass
 
     def _check_tz(self) -> NoReturn:
-        """ Convert current timezone of existing candle data to new timezone. """
+        """ Convert current timezone of existing candle data to new timezone.
+
+        Notes:
+            Last timezone is stored via the `tz` instance attribute. Last timezone should be stored on an instance level
+            since all candle data is stored per instance, and not on a class level. Since the global variable `TZ`
+            captures system timezone, system timezone is checked against instance timezone. If timezones differ, then
+            `tz_convert()` is called on each individual frequency. Iterating over multiple frequencies avoids an error
+            that is raised due to duplicated datetime objects (intersecting times is a function of multi-frequency OHLC
+            data).
+
+            Maybe a discreet `CandleData` class could lower boilerplate code in the future.
+        """
         if self.tz != TZ:
             for freq in self.valid_freqs:
                 candles: pd.DataFrame = self.candles(freq)
