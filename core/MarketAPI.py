@@ -1,8 +1,9 @@
-import datetime
 from abc import ABC, abstractmethod
+import datetime
 import logging
-import pandas as pd
 from os import path
+import pandas as pd
+from pytz import timezone
 from typing import Dict, List, NoReturn, Union, Optional, Tuple
 from yaml import safe_dump, safe_load
 import warnings
@@ -65,6 +66,8 @@ class MarketAPI(Market, ABC):
         """
         super().__init__(symbol, **kwargs)
 
+        self._tzname: str = self._global_tz
+
         self.api_key = api_key
         self.api_secret = api_secret
         if api_secret is not None:
@@ -100,6 +103,14 @@ class MarketAPI(Market, ABC):
                 stale.append(freq)
 
         return tuple(stale)
+
+    @property
+    def tz(self) -> timezone:
+        return timezone(self._tzname)
+
+    @tz.setter
+    def tz(self, val: timezone) -> NoReturn:
+        self._tzname = str(val)
 
     def _check_candle_age(self, frequency: str = None, now: datetime.datetime = None) -> bool:
         """ Check if candle data is expired.
@@ -208,6 +219,7 @@ class MarketAPI(Market, ABC):
         """
         print("Beginning update")
         self.load()
+        self._check_tz()
 
         try:
             _data = []
@@ -315,3 +327,39 @@ class MarketAPI(Market, ABC):
             Quantized and shifted pd.Timestamp (or str if `freq='1D'`
         """
         pass
+
+    @classmethod
+    @property
+    def _global_tz(cls):
+        """ Get global timezone.
+
+        Implemented during testing to simulate global timezone.
+        """
+        return str(TZ)
+
+    def _check_tz(self) -> NoReturn:
+        """ Convert current timezone of existing candle data to new timezone.
+
+        Notes:
+            Last timezone is stored via the `tz` instance attribute. Last timezone should be stored on an instance level
+            since all candle data is stored per instance, and not on a class level. Since the global variable `TZ`
+            captures system timezone, system timezone is checked against instance timezone. If timezones differ, then
+            `tz_convert()` is called on each individual frequency. Iterating over multiple frequencies avoids an error
+            that is raised due to duplicated datetime objects (intersecting times is a function of multi-frequency OHLC
+            data).
+
+            Maybe a discreet `CandleData` class could lower boilerplate code in the future.
+        """
+        _tz = self._global_tz
+        if self.tz != _tz:
+            dates = []
+            for freq in self.valid_freqs:
+                candles: pd.DataFrame = self._data.loc[freq]
+                dates.append(candles.index.tz_convert(_tz))
+
+            # hack to re-create `MultiIndex`
+            index = pd.concat([pd.DataFrame(index=i) for i in dates],
+                              keys=self.valid_freqs).index
+            self._data.index = index
+
+            self.tz = _tz

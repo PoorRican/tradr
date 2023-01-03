@@ -1,18 +1,22 @@
+import datetime
 import datetime as dt
-import pandas as pd
 from os import mkdir, path
+import pandas as pd
+from pytz import timezone
 from shutil import rmtree
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, PropertyMock
 from yaml import safe_dump, safe_load
 
 from core import MarketAPI
+from misc import TZ
 
 
 class BaseMarketAPITests(unittest.TestCase):
     @patch("core.MarketAPI.__abstractmethods__", set())
     def setUp(self) -> None:
-        self.args = {'api_key': 'key', 'api_secret': 'secret', 'update': False}
+        self.args = {'api_key': 'key', 'api_secret': 'secret', 'update': False,
+                     'auto_update': False}
         self.market = MarketAPI(**self.args)
         self.market.__class__._SECRET_FN = 'mock_secret.yml'
         self.market.__class__._INSTANCES_FN = 'mock_instances.yml'
@@ -26,6 +30,34 @@ class GeneralMarketAPITests(BaseMarketAPITests):
         expected = pd.DataFrame([2, 4, 6, 7, 8, 9, 10], index=[2, 4, 6, 7, 8, 9, 10])
         combined = self.market._combine_candles(_df)
         self.assertTrue(combined.equals(expected))
+
+    def test_check_tz(self):
+        valid_freqs = ('1h', '6h', '1d', '4h')
+        self.market.valid_freqs = valid_freqs
+        tz = timezone('US/Pacific')
+        dates = []
+        for freq in valid_freqs:
+            dates.append(pd.date_range(dt.datetime.now(tz=tz), periods=10, freq=freq))
+
+        # make `MultiIndex`
+        index = pd.concat([pd.DataFrame(index=i) for i in dates],
+                          keys=valid_freqs).index
+        self.market._data = pd.DataFrame(index=index)
+
+        # assert that index has correct tz
+        for freq in valid_freqs:
+            self.assertEqual(self.market.candles(freq).index.tz, tz)
+
+        # assert that global timezone can be overwritten
+        new_tz = timezone('MST')
+        with patch('core.MarketAPI._global_tz',
+                   new_callable=PropertyMock(return_value=new_tz)):
+            self.market._check_tz()
+            self.assertEqual(self.market.tz, new_tz)
+
+            for freq in valid_freqs:
+                self.assertIsNot(self.market.candles(freq).index.tz, tz)
+                self.assertIs(self.market.candles(freq).index.tz, new_tz)
 
 
 class InstanceTests(BaseMarketAPITests):
