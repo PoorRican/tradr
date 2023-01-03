@@ -66,7 +66,7 @@ class MarketAPI(Market, ABC):
         """
         super().__init__(symbol, **kwargs)
 
-        self._tzname: str = str(TZ)
+        self._tzname: str = self._global_tz
 
         self.api_key = api_key
         self.api_secret = api_secret
@@ -328,6 +328,15 @@ class MarketAPI(Market, ABC):
         """
         pass
 
+    @classmethod
+    @property
+    def _global_tz(cls):
+        """ Get global timezone.
+
+        Implemented during testing to simulate global timezone.
+        """
+        return str(TZ)
+
     def _check_tz(self) -> NoReturn:
         """ Convert current timezone of existing candle data to new timezone.
 
@@ -341,9 +350,16 @@ class MarketAPI(Market, ABC):
 
             Maybe a discreet `CandleData` class could lower boilerplate code in the future.
         """
-        if self.tz != TZ:
+        _tz = self._global_tz
+        if self.tz != _tz:
+            dates = []
             for freq in self.valid_freqs:
-                candles: pd.DataFrame = self.candles(freq)
-                candles.index = candles.index.tz_convert(TZ)
+                candles: pd.DataFrame = self._data.loc[freq]
+                dates.append(candles.index.tz_convert(_tz))
 
-            self.tz = TZ
+            # hack to re-create `MultiIndex`
+            index = pd.concat([pd.DataFrame(index=i) for i in dates],
+                              keys=self.valid_freqs).index
+            self._data.index = index
+
+            self.tz = _tz
