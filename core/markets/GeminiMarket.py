@@ -1,7 +1,9 @@
 import base64
+from datetime import timedelta
 import hashlib
 import hmac
 import json
+from pytz import timezone
 import time
 from typing import Union, Optional
 import pandas as pd
@@ -9,7 +11,6 @@ import requests
 import logging
 
 from core.MarketAPI import MarketAPI
-from misc import TZ
 from primitives import ReasonCode
 from models import json_to_df, Trade, SuccessfulTrade, FailedTrade
 
@@ -136,7 +137,7 @@ class GeminiMarket(MarketAPI):
         # set flag/metadata on `DataFrame`
         # TODO: use pandas' built-in `freq` value for index
         data.attrs['freq'] = freq
-        data.index = data.index.tz_localize(TZ, ambiguous='infer')
+        data.index = data.index.tz_localize(timezone(self._global_tz), ambiguous='infer')
 
         return data
 
@@ -321,11 +322,12 @@ class GeminiMarket(MarketAPI):
         _freq = self.translate_period(freq)      # `DateOffset` conversion
         _point = point.floor(_freq, nonexistent='shift_backward')
         if _freq == '6H':
-            if _point.dst():
-                _point -= pd.DateOffset(hours=3)
-            else:
-                _point -= pd.DateOffset(hours=4)
-            _point = _point.floor('H', nonexistent='shift_backward')
+            # Gemini candle data originates from the 'US/Eastern' timezone
+            offset: timedelta = point.tz_convert('US/Eastern').utcoffset() - point.utcoffset()
+            # undo dst
+            # if point.dst():
+            #     offset += timedelta(hours=1)
+            _point -= pd.DateOffset(seconds=offset.seconds)
         elif _freq == '1D':
             # check if data for current day exists
             _str = _point.strftime('%m/%d/%Y')

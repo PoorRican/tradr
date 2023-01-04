@@ -49,9 +49,10 @@ class GeneralMarketAPITests(BaseMarketAPITests):
             self.assertEqual(self.market.candles(freq).index.tz, tz)
 
         # assert that global timezone can be overwritten
-        new_tz = timezone('MST')
+        new_tz_n = 'MST'
+        new_tz = timezone(new_tz_n)
         with patch('core.MarketAPI._global_tz',
-                   new_callable=PropertyMock(return_value=new_tz)):
+                   new_callable=PropertyMock(return_value=new_tz_n)):
             self.market._check_tz()
             self.assertEqual(self.market.tz, new_tz)
 

@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import datetime
 import logging
 from os import path
+from warnings import warn
+
 import pandas as pd
 from pytz import timezone
 from typing import Dict, List, NoReturn, Union, Optional, Tuple
@@ -95,7 +97,7 @@ class MarketAPI(Market, ABC):
         Returns
             A list of frequencies that need to be updated.
         """
-        now = datetime.datetime.now(tz=TZ)
+        now = datetime.datetime.now(tz=timezone(self._global_tz))
         stale = []
         for freq in self.valid_freqs:
             _stale = self._check_candle_age(freq, now)
@@ -131,7 +133,7 @@ class MarketAPI(Market, ABC):
         if self._data.empty:
             return True
         if now is None:
-            now = datetime.datetime.now(tz=TZ)
+            now = datetime.datetime.now(tz=timezone(self._global_tz))
         data = self.candles(frequency)
         last_point = data.iloc[-1].name
         delta: pd.Timedelta = now - last_point
@@ -328,6 +330,16 @@ class MarketAPI(Market, ABC):
         """
         pass
 
+    def load(self):
+        super().load()
+
+        # fix `DateTimeIndex`
+        try:
+            dt_idx = pd.to_datetime(self._data.index.get_level_values(1), utc=True).tz_convert(self.tz)
+            self._data.index = self._data.index.set_levels(dt_idx, level=1, verify_integrity=False)
+        except IndexError:
+            warn("Error converting embedded index to DatetimeIndex")
+
     @classmethod
     @property
     def _global_tz(cls):
@@ -350,16 +362,14 @@ class MarketAPI(Market, ABC):
 
             Maybe a discreet `CandleData` class could lower boilerplate code in the future.
         """
-        _tz = self._global_tz
+        _tzname = self._global_tz
+        _tz = timezone(_tzname)
+        print(f"Checking tz. Detected global tz to be {_tzname}.")
         if self.tz != _tz:
-            dates = []
-            for freq in self.valid_freqs:
-                candles: pd.DataFrame = self._data.loc[freq]
-                dates.append(candles.index.tz_convert(_tz))
-
-            # hack to re-create `MultiIndex`
-            index = pd.concat([pd.DataFrame(index=i) for i in dates],
-                              keys=self.valid_freqs).index
-            self._data.index = index
-
+            print(f"Instance tz ({self.tz}) differs from global tz...")
+            dt_idx = self._data.index.get_level_values(1).tz_convert(_tz)
+            self._data.index = self._data.index.set_levels(dt_idx, level=1, verify_integrity=False)
             self.tz = _tz
+            print(f"Localized candle data to {_tzname}")
+        else:
+            print(f"Instance tz matches global tz")
