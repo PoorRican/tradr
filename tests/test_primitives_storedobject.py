@@ -91,6 +91,20 @@ class StoredObjectSerialization(BaseStoredObjectTests):
 
         # TODO: test that dataframes are properly loaded
 
+    def test_save_exclude(self):
+        # test assert that excluded attribute is not serialized
+        _attr_name = 'mock_df'
+        _excluded = 'excluded'
+        setattr(self.object, _attr_name, pd.DataFrame())
+        self.object.exclude = [_excluded]
+
+        excluded = f"{_excluded}.yml"
+        with patch('primitives.StoredObject._instance_dir',
+                   new_callable=PropertyMock(return_value=Path(self.dir, 'test_object'))):
+            self.object.save()
+            _files = [i.name for i in self.object._instance_dir.iterdir()]
+        self.assertNotIn(excluded, _files)
+
 
 if __name__ == '__main__':
     unittest.main()
