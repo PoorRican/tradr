@@ -382,3 +382,11 @@ class MarketAPI(Market, ABC):
             print(f"Localized candle data to {_tzname}")
         else:
             print(f"Instance tz matches global tz")
+
+    @classmethod
+    def fetch_all(cls, api_secret: str, api_key: str, assets: List[str] = None):
+        if assets is None:
+            assets = cls.asset_pairs
+        for symbol in assets:
+            print(f"Starting to update candle data for {symbol}")
+            cls(api_secret=api_secret, api_key=api_key, symbol=symbol)
