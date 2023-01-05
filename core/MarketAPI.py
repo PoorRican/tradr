@@ -268,7 +268,8 @@ class MarketAPI(Market, ABC):
         pass
 
     def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
-        assert self._data.index.get_level_values(1).tz == incoming.index.get_level_values(1).tz
+        if not self._data.index.empty:
+            assert self._data.index.get_level_values(1).tz == incoming.index.get_level_values(1).tz
         combined = pd.concat([self._data, incoming])
         combined = combined[~combined.index.duplicated(keep="first")]         # drop rows w/ duplicated index
 
