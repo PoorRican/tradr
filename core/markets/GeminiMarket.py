@@ -325,8 +325,8 @@ class GeminiMarket(MarketAPI):
             # Gemini candle data originates from the 'US/Eastern' timezone
             offset: timedelta = point.tz_convert('US/Eastern').utcoffset() - point.utcoffset()
             # undo dst
-            # if point.dst():
-            #     offset += timedelta(hours=1)
+            if not point.dst():
+                offset += timedelta(hours=1)
             _point -= pd.DateOffset(seconds=offset.seconds)
         elif _freq == '1D':
             # check if data for current day exists
