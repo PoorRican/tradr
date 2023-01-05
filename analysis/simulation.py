@@ -75,7 +75,11 @@ class Simulation(object):
         logging.info(msg)
         print(msg)
         points = pd.date_range(start, end, freq=freq, tz=TZ)
-        for i, point in enumerate(points):
+        for i, _point in enumerate(points):
+
+            # remove `freq` attribute
+            point = pd.Timestamp.fromtimestamp(_point.timestamp(), tz=TZ)
+
             # TODO: enable multithreading
             self.print_progress(i)
             self.strategy.process(point)

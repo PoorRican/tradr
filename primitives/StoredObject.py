@@ -7,7 +7,7 @@ from typing import List, NoReturn
 from warnings import warn
 import yaml
 
-from misc import TZ, DATA_ROOT
+from misc import DATA_ROOT
 
 _FN_EXT = ".yml"
 _LITERALS_FN = f"literals{_FN_EXT}"
@@ -21,7 +21,7 @@ def timestamp_representer(dumper, data):
 
 
 def timestamp_constructor(loader, node):
-    return pd.Timestamp(node.value, tz=TZ)
+    return pd.Timestamp(node.value)
 
 
 yaml.add_representer(pd.Timestamp, timestamp_representer)

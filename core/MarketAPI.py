@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import datetime
 import logging
 from os import path
+
 import pandas as pd
 from pytz import timezone
 from typing import Dict, List, NoReturn, Union, Optional, Tuple
@@ -46,7 +47,8 @@ class MarketAPI(Market, ABC):
     instances: Dict[str, 'MarketAPI'] = {}
 
     def __init__(self, api_key: str = None, api_secret: str = None,
-                 update=True, auto_update=True, symbol: str = None, fee: float = None, **kwargs):
+                 update: bool = True, load: bool = True, auto_update: bool = True,
+                 symbol: str = None, fee: float = None, **kwargs):
         """
         Args:
             api_key:
@@ -55,6 +57,8 @@ class MarketAPI(Market, ABC):
                 API secret
             update:
                 flag to disable fetching active market data. Reads any cached file by default.
+            load:
+                Flag to disable loading from disk
             auto_update:
                 Flag to disable auto-updating. Prevents checking of stale candle data.
             symbol:
@@ -76,7 +80,7 @@ class MarketAPI(Market, ABC):
         self.auto_update = auto_update
         if update:
             self.update()
-        else:
+        elif load:
             self.load()
 
         self.instances[self.id] = self
@@ -95,7 +99,7 @@ class MarketAPI(Market, ABC):
         Returns
             A list of frequencies that need to be updated.
         """
-        now = datetime.datetime.now(tz=TZ)
+        now = datetime.datetime.now(tz=timezone(self._global_tz))
         stale = []
         for freq in self.valid_freqs:
             _stale = self._check_candle_age(freq, now)
@@ -131,8 +135,8 @@ class MarketAPI(Market, ABC):
         if self._data.empty:
             return True
         if now is None:
-            now = datetime.datetime.now(tz=TZ)
-        data = self.candles(frequency)
+            now = datetime.datetime.now(tz=timezone(self._global_tz))
+        data = self._data.loc[frequency]
         last_point = data.iloc[-1].name
         delta: pd.Timedelta = now - last_point
 
@@ -219,7 +223,7 @@ class MarketAPI(Market, ABC):
         """
         print("Beginning update")
         self.load()
-        self._check_tz()
+        # self._check_tz()
 
         try:
             _data = []
@@ -232,10 +236,7 @@ class MarketAPI(Market, ABC):
                 _data.append(_candles)
 
             data = pd.concat(_data, axis='index', keys=self.valid_freqs)    # add keys
-            data = self._combine_candles(data)
-            data.index = pd.MultiIndex.from_tuples(data.index)      # convert to MultiIndex
-
-            self._data = data
+            self._data = self._combine_candles(data)
 
             self.save()
             print(f"Update complete for {self.__name__}")
@@ -266,18 +267,24 @@ class MarketAPI(Market, ABC):
         pass
 
     def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
+        if not self._data.index.empty:
+            assert self._data.index.get_level_values(1).tz == incoming.index.get_level_values(1).tz
         combined = pd.concat([self._data, incoming])
         combined = combined[~combined.index.duplicated(keep="first")]         # drop rows w/ duplicated index
-        return combined.sort_index()
+
+        _sorted = combined.sort_index()
+        del combined
+        _sorted.index = pd.MultiIndex.from_tuples(_sorted.index)
+        return _sorted
 
     def _repair_candles(self, data: pd.DataFrame, freq: str) -> pd.DataFrame:
         """ Fill in missing values for candle data via interpolation. """
         assert freq in self.valid_freqs
 
-        buffer = pd.DataFrame(data, copy=True, dtype=float)
+        buffer = data.copy(deep=True)
 
-        start = data.iloc[0].name
-        end = data.iloc[-1].name
+        start = data.index[0]
+        end = data.index[-1]
         _freq = self.translate_period(freq)
 
         # drop invalid rows
@@ -286,7 +293,6 @@ class MarketAPI(Market, ABC):
         buffer = buffer[~buffer.index.duplicated(keep="first")]         # drop rows w/ duplicated index
 
         index = pd.date_range(start=start, end=end, freq=_freq, tz=data.index.tz)
-
         buffer = buffer.reindex(index)
         buffer.interpolate(inplace=True)
 
@@ -328,6 +334,26 @@ class MarketAPI(Market, ABC):
         """
         pass
 
+    def _set_index_tz(self, tz: timezone = None) -> NoReturn:
+        if tz is None:
+            tz = self.tz
+
+        candles = []
+        _data = self._data.copy(True)
+        for freq in self.valid_freqs:
+            _candles = _data.loc[freq]
+            _dti = pd.to_datetime(_candles.index, utc=True).tz_convert(tz)
+            _candles.index = _dti
+            candles.append(_candles)
+
+        self._data = pd.concat(candles, keys=self.valid_freqs)
+
+    def load(self):
+        super().load()
+
+        # fix `DateTimeIndex`
+        self._set_index_tz()
+
     @classmethod
     @property
     def _global_tz(cls):
@@ -350,16 +376,21 @@ class MarketAPI(Market, ABC):
 
             Maybe a discreet `CandleData` class could lower boilerplate code in the future.
         """
-        _tz = self._global_tz
+        _tzname = self._global_tz
+        _tz = timezone(_tzname)
+        print(f"Checking tz. Detected global tz to be {_tzname}.")
         if self.tz != _tz:
-            dates = []
-            for freq in self.valid_freqs:
-                candles: pd.DataFrame = self._data.loc[freq]
-                dates.append(candles.index.tz_convert(_tz))
-
-            # hack to re-create `MultiIndex`
-            index = pd.concat([pd.DataFrame(index=i) for i in dates],
-                              keys=self.valid_freqs).index
-            self._data.index = index
-
+            print(f"Instance tz ({self.tz}) differs from global tz...")
+            self._set_index_tz(_tz)
             self.tz = _tz
+            print(f"Localized candle data to {_tzname}")
+        else:
+            print(f"Instance tz matches global tz")
+
+    @classmethod
+    def fetch_all(cls, api_secret: str, api_key: str, assets: List[str] = None):
+        if assets is None:
+            assets = cls.asset_pairs
+        for symbol in assets:
+            print(f"Starting to update candle data for {symbol}")
+            cls(api_secret=api_secret, api_key=api_key, symbol=symbol)

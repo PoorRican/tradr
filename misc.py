@@ -3,7 +3,13 @@ from os import path
 from pytz import timezone
 
 
-TZ = timezone(time.tzname[0])
+# capture and manipulate system timezone
+_tzname = time.tzname[0]
+if _tzname == 'PST':
+    _tzname = 'US/Pacific'
+elif _tzname == 'EST':
+    _tzname = 'US/Eastern'
+TZ = timezone(_tzname)
 
 
 def _project_root() -> str:

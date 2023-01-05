@@ -263,7 +263,7 @@ class FrequencySignal(object):
         # TODO: check that market data is not too ahead of computed indicators
 
         # initialize executor or run on single thread
-        if self.threads:
+        if self.threads and False:
             fs = self.func_threads('signal', executor=executor,
                                    point=point, candles=self.candles)
             signals = pd.Series([future.result() for future in concurrent.futures.wait(fs)[0]])
