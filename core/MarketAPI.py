@@ -137,7 +137,7 @@ class MarketAPI(Market, ABC):
             return True
         if now is None:
             now = datetime.datetime.now(tz=timezone(self._global_tz))
-        data = self.candles(frequency)
+        data = self._data.loc[frequency]
         last_point = data.iloc[-1].name
         delta: pd.Timedelta = now - last_point
 
