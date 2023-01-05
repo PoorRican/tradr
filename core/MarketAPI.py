@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 import datetime
 import logging
 from os import path
-from warnings import warn
 
 import pandas as pd
 from pytz import timezone
@@ -224,7 +223,7 @@ class MarketAPI(Market, ABC):
         """
         print("Beginning update")
         self.load()
-        self._check_tz()
+        # self._check_tz()
 
         try:
             _data = []
@@ -339,11 +338,15 @@ class MarketAPI(Market, ABC):
         if tz is None:
             tz = self.tz
 
-        try:
-            dt_idx = pd.to_datetime(self._data.index.get_level_values(1), utc=True).tz_convert(tz)
-            self._data.index = self._data.index.set_levels(dt_idx, level=1, verify_integrity=False)
-        except IndexError:
-            warn("Error converting embedded index to DatetimeIndex")
+        candles = []
+        _data = self._data.copy(True)
+        for freq in self.valid_freqs:
+            _candles = _data.loc[freq]
+            _dti = pd.to_datetime(_candles.index, utc=True).tz_convert(tz)
+            _candles.index = _dti
+            candles.append(_candles)
+
+        self._data = pd.concat(candles, keys=self.valid_freqs)
 
     def load(self):
         super().load()
