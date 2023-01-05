@@ -48,7 +48,8 @@ class MarketAPI(Market, ABC):
     instances: Dict[str, 'MarketAPI'] = {}
 
     def __init__(self, api_key: str = None, api_secret: str = None,
-                 update=True, auto_update=True, symbol: str = None, fee: float = None, **kwargs):
+                 update: bool = True, load: bool = True, auto_update: bool = True,
+                 symbol: str = None, fee: float = None, **kwargs):
         """
         Args:
             api_key:
@@ -57,6 +58,8 @@ class MarketAPI(Market, ABC):
                 API secret
             update:
                 flag to disable fetching active market data. Reads any cached file by default.
+            load:
+                Flag to disable loading from disk
             auto_update:
                 Flag to disable auto-updating. Prevents checking of stale candle data.
             symbol:
@@ -78,7 +81,7 @@ class MarketAPI(Market, ABC):
         self.auto_update = auto_update
         if update:
             self.update()
-        else:
+        elif load:
             self.load()
 
         self.instances[self.id] = self
@@ -234,10 +237,7 @@ class MarketAPI(Market, ABC):
                 _data.append(_candles)
 
             data = pd.concat(_data, axis='index', keys=self.valid_freqs)    # add keys
-            data = self._combine_candles(data)
-            data.index = pd.MultiIndex.from_tuples(data.index)      # convert to MultiIndex
-
-            self._data = data
+            self._data = self._combine_candles(data)
 
             self.save()
             print(f"Update complete for {self.__name__}")
@@ -268,18 +268,23 @@ class MarketAPI(Market, ABC):
         pass
 
     def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
+        assert self._data.index.get_level_values(1).tz == incoming.index.get_level_values(1).tz
         combined = pd.concat([self._data, incoming])
         combined = combined[~combined.index.duplicated(keep="first")]         # drop rows w/ duplicated index
-        return combined.sort_index()
+
+        _sorted = combined.sort_index()
+        del combined
+        _sorted.index = pd.MultiIndex.from_tuples(_sorted.index)
+        return _sorted
 
     def _repair_candles(self, data: pd.DataFrame, freq: str) -> pd.DataFrame:
         """ Fill in missing values for candle data via interpolation. """
         assert freq in self.valid_freqs
 
-        buffer = pd.DataFrame(data, copy=True, dtype=float)
+        buffer = data.copy(deep=True)
 
-        start = data.iloc[0].name
-        end = data.iloc[-1].name
+        start = data.index[0]
+        end = data.index[-1]
         _freq = self.translate_period(freq)
 
         # drop invalid rows
@@ -288,7 +293,6 @@ class MarketAPI(Market, ABC):
         buffer = buffer[~buffer.index.duplicated(keep="first")]         # drop rows w/ duplicated index
 
         index = pd.date_range(start=start, end=end, freq=_freq, tz=data.index.tz)
-
         buffer = buffer.reindex(index)
         buffer.interpolate(inplace=True)
 
@@ -330,15 +334,21 @@ class MarketAPI(Market, ABC):
         """
         pass
 
+    def _set_index_tz(self, tz: timezone = None) -> NoReturn:
+        if tz is None:
+            tz = self.tz
+
+        try:
+            dt_idx = pd.to_datetime(self._data.index.get_level_values(1), utc=True).tz_convert(tz)
+            self._data.index = self._data.index.set_levels(dt_idx, level=1, verify_integrity=False)
+        except IndexError:
+            warn("Error converting embedded index to DatetimeIndex")
+
     def load(self):
         super().load()
 
         # fix `DateTimeIndex`
-        try:
-            dt_idx = pd.to_datetime(self._data.index.get_level_values(1), utc=True).tz_convert(self.tz)
-            self._data.index = self._data.index.set_levels(dt_idx, level=1, verify_integrity=False)
-        except IndexError:
-            warn("Error converting embedded index to DatetimeIndex")
+        self._set_index_tz()
 
     @classmethod
     @property
@@ -367,8 +377,7 @@ class MarketAPI(Market, ABC):
         print(f"Checking tz. Detected global tz to be {_tzname}.")
         if self.tz != _tz:
             print(f"Instance tz ({self.tz}) differs from global tz...")
-            dt_idx = self._data.index.get_level_values(1).tz_convert(_tz)
-            self._data.index = self._data.index.set_levels(dt_idx, level=1, verify_integrity=False)
+            self._set_index_tz(_tz)
             self.tz = _tz
             print(f"Localized candle data to {_tzname}")
         else:
