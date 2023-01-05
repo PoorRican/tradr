@@ -78,6 +78,10 @@ class OscillationMixin(FinancialsMixin, ABC):
         Number of incomplete (outstanding) orders is limited here. If there are no remaining allowed orders
         (as defined by `_remaining`) then False is returned.
 
+        Args:
+            point:
+                Point in time to examine. During backtesting, `point` must be quantized to the keys in `candles`
+
         Notes:
             `self.indicators.develop()` needs to be called beforehand.
 
@@ -92,6 +96,8 @@ class OscillationMixin(FinancialsMixin, ABC):
         """
         if not point:
             point = self.market.most_recent_timestamp
+        else:
+            assert point in self.candles.index
 
         signal: Signal = self.indicators.signal(point)
         if self._remaining <= 1:
