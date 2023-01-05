@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import datetime
 import logging
 from os import path
+from warnings import warn
 
 import pandas as pd
 from pytz import timezone
@@ -10,7 +11,7 @@ from yaml import safe_dump, safe_load
 import warnings
 
 from core.market import Market
-from misc import TZ
+from misc import TZ, ENGINE
 from models.trades import Trade, SuccessfulTrade, FailedTrade
 from primitives import CachedValue
 
@@ -47,7 +48,7 @@ class MarketAPI(Market, ABC):
     instances: Dict[str, 'MarketAPI'] = {}
 
     def __init__(self, api_key: str = None, api_secret: str = None,
-                 update: bool = True, load: bool = True, auto_update: bool = True,
+                 update: bool = True, load: bool = True, ignore_exclude: bool = False, auto_update: bool = True,
                  symbol: str = None, fee: float = None, **kwargs):
         """
         Args:
@@ -59,6 +60,9 @@ class MarketAPI(Market, ABC):
                 flag to disable fetching active market data. Reads any cached file by default.
             load:
                 Flag to disable loading from disk
+            ignore_exclude:
+                Flag to load (then save) serialized attributes that are normally excluded. This is used for bootstrapping
+                database tables.
             auto_update:
                 Flag to disable auto-updating. Prevents checking of stale candle data.
             symbol:
@@ -78,7 +82,12 @@ class MarketAPI(Market, ABC):
             self.api_secret = api_secret.encode()
 
         self.auto_update = auto_update
-        if update:
+
+        if ignore_exclude:
+            self.load(ignore_exclude=True)
+            self.update(load=False, save=False)
+            self.save(ignore_exclude=True)
+        elif update:
             self.update()
         elif load:
             self.load()
@@ -214,15 +223,22 @@ class MarketAPI(Market, ABC):
         with open(path.join(cls.root, fn), 'w') as f:
             safe_dump(lines, f)
 
-    def update(self) -> None:
+    def update(self, load: bool = True, save: bool = True) -> None:
         """ Updates `data` with recent candle data.
 
         Notes
             Because this function takes time. It should not be called in `__init__()`
             and should be run asynchronously.
+
+        Args:
+            load:
+                Optional flag to call `load()`
+            save:
+                Optional flag to call `save()`
         """
         print("Beginning update")
-        self.load()
+        if load:
+            self.load()
         # self._check_tz()
 
         try:
@@ -238,7 +254,8 @@ class MarketAPI(Market, ABC):
             data = pd.concat(_data, axis='index', keys=self.valid_freqs)    # add keys
             self._data = self._combine_candles(data)
 
-            self.save()
+            if save:
+                self.save()
             print(f"Update complete for {self.__name__}")
         except ConnectionError as e:
             msg = f'Connection Error. Deferring to cached data.'
@@ -348,11 +365,18 @@ class MarketAPI(Market, ABC):
 
         self._data = pd.concat(candles, keys=self.valid_freqs)
 
-    def load(self):
-        super().load()
+    def load(self, ignore_exclude: bool = False):
+        self.load_from_db()     # call first to prevent `_data` from being overwritten
+
+        super().load(ignore_exclude)
 
         # fix `DateTimeIndex`
         self._set_index_tz()
+
+    def save(self, ignore_exclude: bool = False):
+        super().save(ignore_exclude)
+
+        self.save_to_db()
 
     @classmethod
     @property
@@ -394,3 +418,25 @@ class MarketAPI(Market, ABC):
         for symbol in assets:
             print(f"Starting to update candle data for {symbol}")
             cls(api_secret=api_secret, api_key=api_key, symbol=symbol)
+
+    def save_to_db(self):
+        _prefix = f"{self.__name__}_{self.symbol}"
+        for freq in self.valid_freqs:
+            table = f"{_prefix}_{freq}"
+            self.candles(freq).to_sql(table, ENGINE, if_exists='replace', index=True)
+
+    def load_from_db(self):
+        try:
+            _prefix = f"{self.__name__}_{self.symbol}"
+            data = []
+            for freq in self.valid_freqs:
+                table = f"{_prefix}_{freq}"
+                _data = pd.read_sql_table(table, ENGINE)
+                _data.index = pd.DatetimeIndex(_data['index'])
+                del _data['index']
+                data.append(_data)
+
+            self._data = pd.concat(data, keys=self.valid_freqs)
+
+        except ValueError:
+            warn('Loading candle data from database failed')

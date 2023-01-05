@@ -131,8 +131,9 @@ class GeminiMarket(MarketAPI):
         data = json_to_df(raw_candle_data)
 
         # reverse so data is ascending (oldest to most recent)
-        data = data.iloc[::-1]
-        assert data.iloc[0].name < data.iloc[-1].name
+        if not (data.index[0] < data.index[-1]):
+            data = data.iloc[::-1]
+        assert data.index[0] < data.index[-1]
 
         # set flag/metadata on `DataFrame`
         # TODO: use pandas' built-in `freq` value for index

@@ -9,3 +9,5 @@ apscheduler==3.9.1.post1
 pyyaml~=6.0
 urllib3~=1.26.2
 pytz==2022.6
+sqlalchemy
+psycopg2-binary
