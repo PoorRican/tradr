@@ -96,8 +96,6 @@ class OscillationMixin(FinancialsMixin, ABC):
         """
         if not point:
             point = self.market.most_recent_timestamp
-        else:
-            assert point in self.candles.index
 
         signal: Signal = self.indicators.signal(point)
         if self._remaining <= 1:
