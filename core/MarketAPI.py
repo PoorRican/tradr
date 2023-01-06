@@ -420,12 +420,15 @@ class MarketAPI(Market, ABC):
             cls(api_secret=api_secret, api_key=api_key, symbol=symbol)
 
     def save_to_db(self):
+        print(f"Saving to db")
         _prefix = f"{self.__name__}_{self.symbol}"
         for freq in self.valid_freqs:
             table = f"{_prefix}_{freq}"
             self.candles(freq).to_sql(table, ENGINE, if_exists='replace', index=True)
+        print("Done saving to db")
 
     def load_from_db(self):
+        print("Loading from db")
         try:
             _prefix = f"{self.__name__}_{self.symbol}"
             data = []
@@ -437,6 +440,8 @@ class MarketAPI(Market, ABC):
                 data.append(_data)
 
             self._data = pd.concat(data, keys=self.valid_freqs)
+
+            print("Done loading from db")
 
         except ValueError:
             warn('Loading candle data from database failed')
