@@ -1,7 +1,7 @@
 import logging
-from math import ceil, isnan, nan
+from math import isnan
 import pandas as pd
-from typing import Sequence, Union, List
+from typing import Union, List
 
 from analysis.trend import TrendDetector, STRONG_THRESHOLD
 from models.indicators import *
@@ -111,10 +111,10 @@ class ThreeProngAlt(OscillationMixin):
 
             # sell more during strong uptrend
             if _trend.trend is TrendDirection.UP:
-                return total * _more
+                total *= _more
             # sell less during strong downtrend
             elif _trend.trend is TrendDirection.DOWN:
-                return total / _less
+                total /= _less
 
             if total > self.assets:
                 return self.assets
