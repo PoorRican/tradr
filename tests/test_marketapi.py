@@ -228,6 +228,7 @@ class InstanceTests(BaseMarketAPITests):
 
     def test_init(self):
         self.assertEqual(len(self.market.instances), 1)
+        self.assertIn('_data', self.market.exclude)
 
     @patch("core.MarketAPI.__abstractmethods__", set())
     def test_restore(self):

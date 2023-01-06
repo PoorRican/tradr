@@ -3,7 +3,7 @@ import numpy as np
 from os import path, mkdir
 from pathlib import Path
 import pandas as pd
-from typing import List, NoReturn
+from typing import List, Iterable, NoReturn, ClassVar
 from warnings import warn
 import yaml
 
@@ -29,11 +29,14 @@ yaml.add_constructor(TIMESTAMP_REPR_STR, timestamp_constructor)
 
 
 class StoredObject(ABC):
-    root: str = DATA_ROOT
+    root: ClassVar[str] = DATA_ROOT
+    exclude: Iterable[str]
     __name__ = 'StoredObject'
 
-    def __init__(self, *args, load: bool = False, **kwargs):
+    def __init__(self, *args, load: bool = False, exclude: Iterable[str] = None, **kwargs):
         super().__init__()
+
+        self.exclude: Iterable[str] = exclude
 
         if load:
             self.load()
@@ -49,7 +52,13 @@ class StoredObject(ABC):
             # TODO: implement mode for read/write access controls
             mkdir(_dir)
 
-    def save(self) -> NoReturn:
+    def save(self, ignore_exclude: bool = False) -> NoReturn:
+        """
+        Args:
+            ignore_exclude:
+                When True, values in instance `exclude` are filtered; otherwise, `exclude` attributes
+                are returned. Default value is to exclude values.
+        """
         print(f"Beginning save for {self.__name__}")
 
         # aggregate attributes
@@ -58,7 +67,9 @@ class StoredObject(ABC):
         _sequence_keys: List[str, ...] = []
         for k, v in self.__dict__.items():
             _t = type(v)
-            if _t == str or _t == int or _t == float:
+            if not ignore_exclude and self.exclude and k in self.exclude:
+                continue
+            elif _t == str or _t == int or _t == float:
                 _literals[k] = v
             elif _t == np.float64:  # `assets` sometimes get stored as `np.float64`
                 _literals[k] = float(v)
@@ -86,11 +97,16 @@ class StoredObject(ABC):
 
         print(f"Finished saving {self.__name__}")
 
-    def load(self) -> NoReturn:
+    def load(self, ignore_exclude: bool = False) -> NoReturn:
         """ Load stored attributes and sequence data from instance directory onto memory.
 
         Notes
             All data on memory is overwritten.
+
+        Args:
+            ignore_exclude:
+                When True, values in instance `exclude` are filtered; otherwise, `exclude` attributes
+                are returned. Default value is to exclude values.
         """
         # TODO: load linked/stored indicator and market data/parameters
         
@@ -109,6 +125,7 @@ class StoredObject(ABC):
             _literals: dict = yaml.full_load(f)
             for k, v in _literals.items():
                 # verify data
+                # excluded values could be filtered here, but is handled below instead.
                 assert hasattr(self, k)
                 assert type(v) in (str, int, float)
 
@@ -116,7 +133,9 @@ class StoredObject(ABC):
 
         for k, v in self.__dict__.items():
             _t = type(v)
-            if _t not in (pd.DataFrame, pd.Series):
+            # skip excluded
+            excluded = not ignore_exclude and self.exclude and k in self.exclude
+            if excluded or _t not in (pd.DataFrame, pd.Series):
                 continue
             try:
                 with open(Path(_dir, f"{k}.yml"), 'r') as f:

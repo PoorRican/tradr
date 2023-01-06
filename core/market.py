@@ -28,7 +28,7 @@ class Market(StoredObject, ABC):
             symbol:
                 Asset pair symbol to use for trading for this instance.
         """
-        super().__init__(**kwargs)
+        super().__init__(exclude=('_data',), **kwargs)
         self._data = pd.DataFrame(columns=list(self.columns))
         """DataFrame: container for candle data.
         
