@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from math import isnan, floor
+from warnings import warn
+
 import matplotlib as plt
 from matplotlib.colors import to_rgba
 from matplotlib.pyplot import Figure
@@ -182,7 +184,11 @@ class Indicator(ABC):
 
         assert len(self.graph)
 
-        row = self.graph.loc[point]
+        try:
+            row = self.graph.loc[point]
+        except KeyError:
+            warn("`Indicator.signal()` has defaulted to returning `HOLD`")
+            return Signal.HOLD
         decision = self._row_decision(row, candles)
         self.computed.loc[point, 'signal'] = decision
         return decision
