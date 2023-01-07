@@ -134,6 +134,8 @@ class Strategy(StoredObject, ABC):
                 May be any derived class of `Trade`. However, if not `FutureTrade`, then `extrema`
                 must be passed.
         """
+        # `FutureTrade` is passed only when `trade` has been marked flagged to not attempt
+        #   therefore it should be a failed trade
         if type(trade) is FutureTrade:
             _trade, extrema = trade.separate()
         else:
@@ -190,7 +192,7 @@ class Strategy(StoredObject, ABC):
             else:
                 # `FutureTrade` is False if a trade has been initiated but will not be attempted.
                 #   This occurs when trade is not profitable, so it will be logged.
-                self._store_order(result)
+                self._store_order(result.convert(), result.point)
         return False
 
     @abstractmethod
