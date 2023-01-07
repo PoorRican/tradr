@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Union, List
 
 from analysis.trend import TrendDetector, STRONG_THRESHOLD
+from models import Trade
 from models.indicators import *
 from strategies.OscillationMixin import OscillationMixin
 from primitives import Side, TrendDirection
@@ -139,8 +140,7 @@ class ThreeProngAlt(OscillationMixin):
                ((trend.trend is TrendDirection.UP and side is Side.BUY) or
                 (trend.trend is TrendDirection.DOWN and side is Side.SELL))
 
-    def _is_profitable(self, amount: float, rate: float, side: Side,
-                       extrema: Union['pd.Timestamp', str] = None) -> bool:
+    def _is_profitable(self, trade: Trade, extrema: Union['pd.Timestamp', str] = None) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
 
         Incorrect trades are rejected during strong trends
@@ -149,19 +149,19 @@ class ThreeProngAlt(OscillationMixin):
         multiplied by `MarketTrend.scalar`. This is because significantly greater profit is expected during a strong
         uptrend.
         """
-        assert side in (Side.BUY, Side.SELL)
+        assert trade.side in (Side.BUY, Side.SELL)
 
-        if isnan(amount):
+        if isnan(trade.amt):
             return False
 
         _trend = self.detector.characterize(extrema)
 
         # prevent incorrect trades during strong trend
-        if self._incorrect_trade(_trend, side):
+        if self._incorrect_trade(_trend, trade.side):
             logging.warning(f'Prevented unaligned trade during strong trend @ {extrema}')
             return False
 
-        if side == Side.BUY:
+        if trade.side == Side.BUY:
             # TODO: add delay after sell. Take strength into account.
             return True
         else:
@@ -176,4 +176,4 @@ class ThreeProngAlt(OscillationMixin):
                 _min_profit = self.threshold * _trend.scalar
             else:
                 _min_profit = self.threshold
-            return self._calc_profit(amount, rate) >= _min_profit
+            return self._calc_profit(trade, last_order) >= _min_profit

@@ -60,6 +60,11 @@ class FutureTrade(Trade):
     def __bool__(self) -> bool:
         return bool(self.attempt)
 
+    @classmethod
+    def factory(cls, trade: Trade, attempt: bool, point: pd.Timestamp, load: Any = None) -> 'FutureTrade':
+        """ Transform `Trade` into `FutureTrade`. """
+        return cls(trade.amt, trade.rate, trade.side, attempt, point, load)
+
     def _trade(self):
         return Trade(self.amt, self.rate, self.side)
 

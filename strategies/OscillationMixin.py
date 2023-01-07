@@ -6,7 +6,7 @@ from typing import Union, List
 from strategies.financials import FinancialsMixin
 from primitives import Signal, Side, ReasonCode
 from misc import TZ
-from models import Indicator, FrequencySignal, FutureTrade
+from models import Indicator, FrequencySignal, FutureTrade, Trade
 
 
 class OscillationMixin(FinancialsMixin, ABC):
@@ -101,12 +101,14 @@ class OscillationMixin(FinancialsMixin, ABC):
         if self._remaining <= 1:
             pass
         elif self._oscillation(signal, point=point):
-            signal: Side = Side(signal)
-            rate: float = self._calc_rate(point, signal)
-            amount: float = self._calc_amount(point, signal)
+            side: Side = Side(signal)
+            del signal
+            rate: float = self._calc_rate(point, side)
+            amount: float = self._calc_amount(point, side)
 
-            _profitable: bool = self._is_profitable(amount, rate, signal, point)
-            trade = FutureTrade(amount, rate, signal, _profitable, point)
+            trade = Trade(amount, rate, side)
+            _profitable: bool = self._is_profitable(trade, point)
+            trade = FutureTrade.factory(trade, _profitable, point)
             if not _profitable:
                 trade.load = ReasonCode.NOT_PROFITABLE
             return trade

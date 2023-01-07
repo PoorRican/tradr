@@ -7,7 +7,7 @@ import logging
 from warnings import warn
 
 from core.MarketAPI import MarketAPI
-from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade
+from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade, Trade
 from primitives import Side, StoredObject
 
 
@@ -90,15 +90,16 @@ class Strategy(StoredObject, ABC):
     def candles(self):
         return self.market.candles(self.freq)
 
-    def _calc_profit(self, amount: float, rate: float) -> float:
+    def _calc_profit(self, trade: Trade, last_trade: Union['pd.Series', 'pd.DataFrame'] = None) -> float:
         """ Calculates profit of a sale.
 
         Returned profit should not be biased in any way. Any biasing on profit should be handled by
         a higher-level method such as `is_profitable()`.
         """
-        last_trade = self.orders.iloc[-1]
+        if last_trade is None:
+            last_trade = self.orders.iloc[-1]
 
-        gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
+        gain = truncate(trade.cost, 2) - truncate(last_trade['cost'], 2)
         return gain - self.market.fee
 
     def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade):
@@ -271,19 +272,16 @@ class Strategy(StoredObject, ABC):
         return bool(accepted)
 
     @abstractmethod
-    def _is_profitable(self, amount: float, rate: float, side: Side,
-                       extrema: Union[str, 'pd.Timestamp'] = None) -> bool:
+    def _is_profitable(self, trade: Trade, extrema: Union[str, 'pd.Timestamp'] = None) -> bool:
         """ Determine if the given trade is profitable or not.
 
         This function is the final decision maker for whether an order should be attempted or not.
 
         Args:
-            amount:
-                amount of asset to be traded
-            rate:
-                rate of exchange
-            side:
-                buy or sell
+            trade:
+                Proposed trade
+            extrema:
+                Point in time that is responsible for initiating trade
 
         Returns:
             Determination whether trade should be executed is binary. It is either profitable or not.
