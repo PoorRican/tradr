@@ -274,16 +274,21 @@ class Strategy(StoredObject, ABC):
         return bool(accepted)
 
     @abstractmethod
-    def _is_profitable(self, trade: Trade, extrema: Union[str, 'pd.Timestamp'] = None) -> bool:
+    def _is_profitable(self, trade: Trade, extrema: Union[str, 'pd.Timestamp'] = None,
+                       strength: float = None) -> bool:
         """ Determine if the given trade is profitable or not.
 
-        This function is the final decision maker for whether an order should be attempted or not.
+        This function is the final decision maker for whether an order should be attempted or not. A profitable
+        sale is considered one where the total gain from a sale is higher or equal to a threshold; a profitable
+        buy is considered one where the short-term buy signal is higher than 2.
 
         Args:
             trade:
                 Proposed trade
             extrema:
                 Point in time that is responsible for initiating trade
+            strength:
+                Perceived strength of signal (stored in `trade.side`)
 
         Returns:
             Determination whether trade should be executed is binary. It is either profitable or not.

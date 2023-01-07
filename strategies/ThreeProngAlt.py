@@ -156,7 +156,8 @@ class ThreeProngAlt(OscillationMixin):
                ((trend.trend is TrendDirection.UP and side is Side.BUY) or
                 (trend.trend is TrendDirection.DOWN and side is Side.SELL))
 
-    def _is_profitable(self, trade: Trade, extrema: Union['pd.Timestamp', str] = None) -> bool:
+    def _is_profitable(self, trade: Trade, extrema: Union['pd.Timestamp', str] = None,
+                       strength: float = None) -> bool:
         """ See if given sale is profitable by checking if gain meets or exceeds a minimum threshold.
 
         Incorrect trades are rejected during strong trends
@@ -178,8 +179,7 @@ class ThreeProngAlt(OscillationMixin):
             return False
 
         if trade.side == Side.BUY:
-            # TODO: add delay after sell. Take strength into account.
-            return True
+            return strength > 1
         else:
             last_order = self.orders.iloc[-1]
             if self.false_positive_sell(trade, last_order):

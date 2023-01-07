@@ -98,6 +98,7 @@ class OscillationMixin(FinancialsMixin, ABC):
             point = self.market.most_recent_timestamp
 
         signal: Signal = self.indicators.signal(point)
+        strength: float = self.indicators.strength(signal, point)
         if self._remaining <= 1:
             pass
         elif self._oscillation(signal, point=point):
@@ -107,7 +108,7 @@ class OscillationMixin(FinancialsMixin, ABC):
             amount: float = self._calc_amount(point, side)
 
             trade = Trade(amount, rate, side)
-            _profitable: bool = self._is_profitable(trade, point)
+            _profitable: bool = self._is_profitable(trade, point, strength)
             trade = FutureTrade.factory(trade, _profitable, point)
             if not _profitable:
                 trade.load = ReasonCode.NOT_PROFITABLE
