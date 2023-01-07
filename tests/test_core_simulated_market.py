@@ -6,11 +6,11 @@ from core.markets.SimulatedMarket import SimulatedMarket
 
 
 class SimulatedMarketTestCases(unittest.TestCase):
-    def test_convert(self):
+    def test_translate(self):
         """ Test that `_convert` returns a `SuccessfulTrade` object """
         trade = Trade(1, 2, Side.BUY)
         market = SimulatedMarket()
-        self.assertIsInstance(market._convert(trade), SuccessfulTrade,
+        self.assertIsInstance(market._translate(trade), SuccessfulTrade,
                               'SimulatedMarket not returned')
 
         self.assertEqual(market.orders, 1, 'orders counter not increased')

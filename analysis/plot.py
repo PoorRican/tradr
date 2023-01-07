@@ -56,8 +56,26 @@ class Plotter(object):
         pass
 
     def plot(self, start: Union['pd.Timestamp', str] = None, width: str = '1d',
-             render: bool = True) -> NoReturn:
+             render: bool = True, render_failed: bool = False) -> NoReturn:
         """ Plot trade enter and exit points as an overlay to market data.
+
+        Primary method of assessing `Strategy` performance is done visually by observing enter and exit points
+        in relation to candle data.
+
+        Args:
+            start:
+                Center of window when observing a specific point in time.
+            width:
+                Width of window for observing windows in time.
+            render:
+                This is a stub that will be used in the future for a more OO approach to plotting data from
+                distinct classes.
+            render_failed:
+                Optional flag to render failed orders on chart to reduce obfuscation from too many trades.
+                Typically, rendering of failed trades should be done when focusing on a window of time
+                and is not necessary for judging strategy performance.
+
+                Argument is passed to `_render_decisions()`.
         """
         if start:
             if type(start) is str:
@@ -82,7 +100,7 @@ class Plotter(object):
         pri = self.subplots[Location.PRIMARY]
         pri.plot(candles.index, candles['close'], color=to_rgba('blue', 0.8))
 
-        self._plot_decisions(orders)
+        self._plot_decisions(orders, render_failed)
         self._plot_money(index=candles.index, assets=assets, capital=capital)
         self._plot_indicators(endpoints)
 
@@ -110,7 +128,7 @@ class Plotter(object):
         _capital = _capital.interpolate()
         sec2.plot(_capital.index, _capital.values, color="green")
 
-    def _plot_decisions(self, orders: pd.DataFrame) -> NoReturn:
+    def _plot_decisions(self, orders: pd.DataFrame, render_failed: bool = False) -> NoReturn:
         if orders.empty:
             return
         """ Plot trade enter and exit locations. """
@@ -140,6 +158,6 @@ class Plotter(object):
             figure.scatter(buys.index, buys['rate'], _buys * scalar, marker="^", color='red')
         if len(sells) > 0:
             figure.scatter(sells.index, sells['rate'], _sells * scalar, marker="v", color='green')
-        if len(self.model.failed_orders) > 0:
+        if render_failed and len(self.model.failed_orders) > 0:
             figure.scatter(self.model.failed_orders.index, self.model.failed_orders['rate'],
                            color=to_rgba("gray", 0.4))

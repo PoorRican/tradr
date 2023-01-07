@@ -202,7 +202,7 @@ class GeminiMarket(MarketAPI):
 
         return response.json()
 
-    def _translate(self, response: dict, trade: Trade) -> 'SuccessfulTrade':
+    def _translate(self, trade: Trade, response: dict) -> 'SuccessfulTrade':
         """ Translate exchange response into `SuccessfulTrade`.
 
         Notes:
@@ -260,7 +260,7 @@ class GeminiMarket(MarketAPI):
         if type(response) is ReasonCode:
             _reason = response
         elif not response['is_cancelled']:  # order was fulfilled
-            return self._translate(response, trade)
+            return self._translate(trade, response)
         else:
             _reason = ReasonCode.MARKET_REJECTED
         return FailedTrade.convert(trade, _reason)
