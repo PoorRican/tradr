@@ -4,7 +4,7 @@ from talib import STOCHRSI
 from typing import Union
 
 from models.indicator import Indicator
-from primitives import Signal
+from primitives import Signal, Normalizer
 
 
 # noinspection PyUnusedLocal
@@ -16,10 +16,13 @@ class STOCHRSIRow(Indicator):
 
     columns = ('fastk', 'fastd')
 
-    def __init__(self, *args, overbought: float = 20, oversold: float = 80, **kwargs):
+    def __init__(self, *args, overbought: float = 20, oversold: float = 80, threshold: float = 0.01, **kwargs):
         super().__init__(*args, **kwargs)
         self._overbought = overbought
         self._oversold = oversold
+        self._threshold = threshold
+
+        self._decision_normalizer = Normalizer(self, 'graph', ['fastk', 'fastd'], diff=True, apply_abs=True)
 
     def oversold(self, d: float, k: float) -> bool:
         return self._oversold < d <= k
@@ -29,19 +32,20 @@ class STOCHRSIRow(Indicator):
 
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
         fastk = row['fastk']
-        fastd = row['fastd']
 
         if hasattr(fastk, '__iter__'):
             fastk = fastk[0]
-        if hasattr(fastd, '__iter__'):
-            fastd = fastd[0]
 
-        if self.overbought(fastd, fastk):
-            return Signal.BUY
-        elif self.oversold(fastd, fastk):
-            return Signal.SELL
-        else:
-            return Signal.HOLD
+        _point: pd.Timestamp = row.name
+        _normals = self._decision_normalizer(_point)
+
+        if _normals.iloc[-1] <= self._threshold:
+            if self._oversold <= fastk:
+                return Signal.SELL
+            elif self._overbought >= fastk:
+                return Signal.BUY
+
+        return Signal.HOLD
 
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
         k = row['fastk']
