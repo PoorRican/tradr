@@ -1,10 +1,11 @@
+import warnings
 from math import isnan, nan
 import pandas as pd
 from talib import MACD
 from typing import Union, Iterable
 
 from models.indicator import Indicator, MAX_STRENGTH
-from primitives import Signal
+from primitives import Signal, Normalizer
 
 
 class MACDRow(Indicator):
@@ -15,11 +16,15 @@ class MACDRow(Indicator):
 
     columns = ('macd', 'macdsignal', 'macdhist')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, threshold: float = 0.01, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # TODO: implement `Normalizer` for normalization of `strength`
         self.scalar: float = nan
         self.last_scalar: float = 0
+
+        self._threshold = threshold
+        self._decision_normalizer = Normalizer(self, 'graph', ['macd', 'macdsignal'], diff=True, apply_abs=True)
 
     def normalize(self, value: float, point: pd.Timestamp, column: Union[str, Iterable[str]]) -> float:
         """ Normalize `value`.
@@ -53,20 +58,24 @@ class MACDRow(Indicator):
         return normal * MAX_STRENGTH
 
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
-        signal = row['macdsignal']
+        """
+        Notes:
+            Buy signal is when MACD crosses and is greater than signal line; sell signal is when MACD crosses and is
+            less than signal line. However, for buys, MACD should be less than 0, vice versa.
+        """
         macd = row['macd']
-
-        if hasattr(signal, '__iter__'):
-            signal = signal[0]
         if hasattr(macd, '__iter__'):
             macd = macd[0]
 
-        if macd < signal < 0:
-            return Signal.BUY
-        elif macd > signal > 0:
-            return Signal.SELL
-        else:
-            return Signal.HOLD
+        _point: pd.Timestamp = row.name
+        _normals = self._decision_normalizer(_point)
+
+        if _normals.iloc[-1] <= self._threshold:
+            if macd <= 0:
+                return Signal.BUY
+            elif macd >= 0:
+                return Signal.SELL
+        return Signal.HOLD
 
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], *args, **kwargs) -> float:
         signal = row['macdsignal']

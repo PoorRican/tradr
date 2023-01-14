@@ -53,7 +53,8 @@ class TimeseriesWorker(ABC):
                 for col in self._columns:
                     assert col in _attr
             assert type(self.ts) in (pd.Series, pd.DataFrame)
-            assert type(self.ts.index) is pd.DatetimeIndex
+            if not self.ts.index.empty:
+                assert type(self.ts.index) is pd.DatetimeIndex
 
         self._size = buffer_size
 
@@ -89,7 +90,6 @@ class TimeseriesWorker(ABC):
         """
         if point is None:
             point = self.ts.index[-1]
-        assert point in self.ts.index
 
         if len(self.ts) < self._size:
             return self.ts

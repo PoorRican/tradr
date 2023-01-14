@@ -1,7 +1,8 @@
+import warnings
 from typing import Union
 
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 from primitives.ts_worker import TimeseriesWorker
 
@@ -13,13 +14,17 @@ class Normalizer(TimeseriesWorker):
 
         self.diff = diff
         self.apply_abs = apply_abs 
-        self._scalar = StandardScaler()
+        self._scaler = MinMaxScaler()
 
     def __call__(self, point: pd.Timestamp = None, *args, **kwargs) -> pd.Series:
-        _buffer = self._buffer(point).copy()
-        if type(_buffer) is pd.Series:
-            _buffer = _buffer.to_frame()
-        return pd.Series(self._scalar.fit_transform(_buffer))
+        _buffer: pd.Series = self._buffer(point).copy()
+
+        # catch `RuntimeWarning` that gets raised by `sklearn` when an all-NaN slice is encountered
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            normals = self._scaler.fit_transform(_buffer.values.reshape(-1, 1))
+
+        return pd.Series(normals.flatten())
     
     def _buffer(self, point: pd.Timestamp = None,
                 diff: bool = None, apply_abs: bool = None) -> Union['pd.Series', 'pd.DataFrame']:

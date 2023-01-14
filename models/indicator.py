@@ -158,6 +158,11 @@ class Indicator(ABC):
         """
         if point in self.computed.index:
             signal = self.computed.loc[point, 'signal']
+
+            # TODO: hack when `signal` is `Series` (occurs when there is duplicate data for daily candles)
+            if type(signal) is pd.Series:
+                signal = signal[0]
+
             if not isnan(signal):
                 signal = int(signal)
                 idx: Union[int, slice] = self.computed.index.get_loc(point)
