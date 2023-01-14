@@ -21,7 +21,7 @@ class TimeseriesWorker(ABC):
             the specified columns.
     """
 
-    def __init__(self, obj: Any, attr: str, columns: List[str] = None, buffer_size: int = 75, verify: bool = True):
+    def __init__(self, obj: Any, attr: str, columns: List[str] = None, buffer_size: int = 750, verify: bool = True):
         """
         Args:
             obj:
@@ -33,7 +33,8 @@ class TimeseriesWorker(ABC):
                 the specified columns.
             buffer_size:
                 Length of timeseries returned by `_buffer()`. Buffer length is used to reduce computation necessary to
-                complete `__call__()` since old data should not need to be processed during runtime.
+                complete `__call__()` since old data should not need to be processed during runtime. However, value
+                should be large enough to characterize extreme values while not adding any noticeable calculation time.
             verify:
                 Verify that `obj` has the attribute `_attr` and that attribute is a timeseries during runtime.
 
