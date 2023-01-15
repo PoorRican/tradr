@@ -210,7 +210,7 @@ class ThreeProngAlt(OscillationMixin):
             return False
 
         if trade.side == Side.BUY:
-            return strength > 1
+            return strength >= 1
         else:
             last_order = self.orders.iloc[-1]
             if self.false_positive_sell(trade, last_order):
