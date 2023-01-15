@@ -1,12 +1,13 @@
 from abc import ABC
 from datetime import datetime
-import pandas as pd
 from typing import Union, List
 
-from strategies.financials import FinancialsMixin
-from primitives import Signal, Side, ReasonCode
+import pandas as pd
+
 from misc import TZ
-from models import Indicator, FrequencySignal, FutureTrade, Trade
+from models import Indicator, FrequencySignal, FutureTrade
+from primitives import Signal, ReasonCode
+from strategies.financials import FinancialsMixin
 
 
 class OscillationMixin(FinancialsMixin, ABC):
@@ -102,12 +103,7 @@ class OscillationMixin(FinancialsMixin, ABC):
         if self._remaining <= 1:
             pass
         elif self._oscillation(signal, point=point):
-            side: Side = Side(signal)
-            del signal
-            rate: float = self._calc_rate(point, side)
-            amount: float = self._calc_amount(point, side)
-
-            trade = Trade(amount, rate, side)
+            trade = self._propose_trade(signal, point)
             _profitable: bool = self._is_profitable(trade, point, strength)
             trade = FutureTrade.factory(trade, _profitable, point)
             if not _profitable:

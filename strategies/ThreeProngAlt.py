@@ -105,7 +105,7 @@ class ThreeProngAlt(OscillationMixin):
             return True
         return False
 
-    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side, rate: float) -> float:
         _trend = self.detector.characterize(extrema)
 
         # default to a scalar of 1 during `CYCLE` since future cannot be determined.
@@ -118,7 +118,7 @@ class ThreeProngAlt(OscillationMixin):
         else:
             last_order = self.orders.iloc[-1]
 
-        rate = self._calc_rate(extrema, side)
+        # these values are used to modulate returned amount.
         _more = 1 + (_trend.scalar / 10)
         _less = 1 - (_trend.scalar / 10)
         if side == Side.SELL:

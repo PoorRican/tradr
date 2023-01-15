@@ -8,7 +8,7 @@ from warnings import warn
 
 from core.MarketAPI import MarketAPI
 from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade, Trade
-from primitives import Side, StoredObject
+from primitives import Side, StoredObject, Signal
 
 
 class Strategy(StoredObject, ABC):
@@ -211,7 +211,7 @@ class Strategy(StoredObject, ABC):
         pass
 
     @abstractmethod
-    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side, rate: float) -> float:
         """ Calculate amount for trade.
 
         This method should return the same value for given parameters, but should only be calculated once.
@@ -221,6 +221,8 @@ class Strategy(StoredObject, ABC):
                 Index/timestamp which triggered trade.
             side:
                 Type of trade. May be 'buy'/'sell'
+            rate:
+                Rate to use when calculating trade size
 
         Returns:
             Amount of asset to trade
@@ -337,3 +339,27 @@ class Strategy(StoredObject, ABC):
         """
         _dir = f"{self.__name__}_{self.market.__name__}_{self.market.symbol}"
         return path.join(self.root, _dir)
+
+    def _propose_trade(self, signal: Signal, point: pd.Timestamp) -> Trade:
+        """ Generate a potential trade from given signal and point in time.
+
+        Notes:
+            This is essentially a wrapper for both `_calc_rate()` and `_calc_amount()`. As a wrapper,
+            a `Trade` ***will*** always be generated. Therefore, any logic determining if a trade should
+            be executed or not should be called *beforehand*. Additionally, `point` should be calculated before
+            this function. The designated function responsible is `_determine_position()`.
+
+        Args:
+            signal:
+                Type of `Trade` to generate.
+
+            point:
+                Point in time. No default is provided because a definite extrema should be determined
+                beforehand.
+        """
+        side: Side = Side(signal)
+        del signal
+        rate: float = self._calc_rate(point, side)
+        amount: float = self._calc_amount(point, side, rate)
+
+        return Trade(amount, rate, side)
