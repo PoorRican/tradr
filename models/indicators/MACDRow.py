@@ -14,7 +14,7 @@ class MACDRow(Indicator):
 
     columns = ('macd', 'macdsignal', 'macdhist')
 
-    def __init__(self, *args, threshold: float = 0.01, **kwargs):
+    def __init__(self, *args, threshold: float = 0.02, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._threshold = threshold
