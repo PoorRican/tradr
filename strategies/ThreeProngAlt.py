@@ -106,11 +106,40 @@ class ThreeProngAlt(OscillationMixin):
         return False
 
     def _calc_amount(self, extrema: pd.Timestamp, side: Side, rate: float) -> float:
+        """ Calculate amount based on characterization of market.
+
+        Notes:
+            The amount to be traded is based on the characterization of the market, as determined by `_trend`
+            The TrendDirection can be either `UP`, `DOWN` or `CYCLE`.
+
+            When the trend attribute of _trend is UP, the returned amount modified to sell more and buy less.
+            On the other hand, when `_trend` is DOWN, the returned amount is modified to sell less and buy more.
+            When `_trend` is CYCLE, the returned amount is not modified, since calculated future cannot be determined.
+
+            When buying, unpaired trades are added accordingly. However, if the calculated total is more than the
+            available assets, the function returns the available assets. Similarly, if the total calculated is more than
+            the available capital, the function returns the maximum amount that can be bought with the available
+            capital.
+
+        Args:
+            self : object
+                instance of the class
+            extrema (pd.Timestamp):
+                the extrema, should be processed beforehand. Preferably inside `_determine_position()`
+            side (enum Side):
+                buy or sell
+            rate (float):
+                rate of the trade, should be calculated beforehand using _calc_rate().
+
+        Returns:
+            float : amount of the trade
+        """
         _trend = self.detector.characterize(extrema)
 
         # default to a scalar of 1 during `CYCLE` since future cannot be determined.
         if isnan(_trend.scalar):
             _trend.scalar = 1
+        _trend.scalar /= 10
 
         if self.orders.empty:
             assert side == Side.BUY
@@ -118,9 +147,10 @@ class ThreeProngAlt(OscillationMixin):
         else:
             last_order = self.orders.iloc[-1]
 
-        # these values are used to modulate returned amount.
-        _more = 1 + (_trend.scalar / 10)
-        _less = 1 - (_trend.scalar / 10)
+        _more, _less = 1, 1         # these values become a percentage used to modulate returned amount.
+        _more += _trend.scalar
+        _less -= _trend.scalar
+
         if side == Side.SELL:
             incomplete = self._check_unpaired(rate)
 
@@ -135,20 +165,21 @@ class ThreeProngAlt(OscillationMixin):
 
             if total > self.assets:
                 return self.assets
-            return total
 
-        if side == Side.BUY:
-            amt = self.starting / rate
+        # side == Side.BUY
+        else:
+            total = self.starting / rate
 
-            # buy less during strong uptrend; buy more during strong downtrend
+            # buy less during strong uptrend
             if _trend.trend is TrendDirection.UP:
-                return amt / _less
+                total /= _less
+            # buy more during strong downtrend
             elif _trend.trend is TrendDirection.DOWN:
-                return amt * _more
+                total *= _more
 
-            if self.capital < amt * rate:
+            if self.capital < total * rate:
                 return self.capital / rate
-            return amt
+        return total
 
     @staticmethod
     def _incorrect_trade(trend, side) -> bool:
