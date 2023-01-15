@@ -100,7 +100,7 @@ class OscillationMixin(FinancialsMixin, ABC):
 
         signal: Signal = self.indicators.signal(point)
         strength: float = self.indicators.strength(signal, point)
-        if self._remaining <= 1:
+        if signal is Signal.BUY and self._remaining < 1:
             pass
         elif self._oscillation(signal, point=point):
             trade = self._propose_trade(signal, point)
