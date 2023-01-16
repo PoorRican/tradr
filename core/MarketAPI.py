@@ -6,7 +6,7 @@ from warnings import warn
 
 import pandas as pd
 from pytz import timezone
-from typing import Dict, List, NoReturn, Union, Optional, Tuple
+from typing import Dict, List, NoReturn, Union, Optional, Tuple, Literal
 from yaml import safe_dump, safe_load
 import warnings
 
@@ -419,12 +419,19 @@ class MarketAPI(Market, ABC):
             print(f"Starting to update candle data for {symbol}")
             cls(api_secret=api_secret, api_key=api_key, symbol=symbol)
 
-    def save_to_db(self):
+    def save_to_db(self, mode: Literal['replace', 'append'] = 'replace',
+                   updates: Dict[str, 'pd.DataFrame'] = None):
         print(f"Saving to db")
         _prefix = f"{self.__name__}_{self.symbol}"
-        for freq in self.valid_freqs:
-            table = f"{_prefix}_{freq}"
-            self.candles(freq).to_sql(table, ENGINE, if_exists='replace', index=True)
+        if mode is 'replace':
+            for freq in self.valid_freqs:
+                table = f"{_prefix}_{freq}"
+                self.candles(freq).to_sql(table, ENGINE, if_exists=mode, index=True)
+        elif mode is 'append':
+            assert updates is not None
+            for freq, df in updates.items():
+                table = f"{_prefix}_{freq}"
+                df.to_sql(table, ENGINE, if_exists='append')
         print("Done saving to db")
 
     def load_from_db(self):
