@@ -2,7 +2,7 @@ from abc import abstractmethod, ABC
 from pathlib import Path
 
 import pandas as pd
-from typing import Tuple, NoReturn
+from typing import Tuple, NoReturn, Dict, Union
 
 from primitives import StoredObject
 
@@ -11,6 +11,14 @@ class Market(StoredObject, ABC):
     """ Core infrastructure which abstracts communication with exchange.
 
     Holds minimal market data.
+
+    Attributes:
+        _data : Dict[str, pd.DataFrame]
+            A dictionary containing the OHLC data for different frequencies.
+            Use the `candles(freq, value=None)` method to get or set values in this attribute.
+            The keys of the dictionary are the valid frequency values
+            and the values are the corresponding dataframe.
+
 
     Todo:
         - Add a layer of risk management:
@@ -27,19 +35,29 @@ class Market(StoredObject, ABC):
         Args:
             symbol:
                 Asset pair symbol to use for trading for this instance.
+            kwargs:
+                Keyword Args that are passed to `StoredObject.__init__()`
         """
         super().__init__(exclude=('_data',), **kwargs)
-        self._data = pd.DataFrame(columns=list(self.columns))
-        """DataFrame: container for candle data.
-        
-        Container gets populated by `get_candles` and should otherwise be read-only.
-        
-        Notes:
-            Should have `source` and `freq` set via the `DataFrame.attrs` convention.
+        self._data: Dict['str', 'pd.DataFrame'] = {}
+        """ Dict[str, pd.DataFrame]
+        A dictionary containing the OHLC data for different frequencies.
+        Use the `candles(freq, value=None)` method to get or set values in this attribute.
+        The keys of the dictionary are the valid frequency values
+        and the values are the corresponding dataframe.
         """
 
         self._check_symbol(symbol)
         self.symbol = symbol
+
+    @property
+    def empty(self) -> bool:
+        """ Return `True` if *any* value in `_data` is empty.
+
+        Technically, all values should either be empty or populated at any given time. There really
+        shouldn't be a case where some values for a given frequency are populated while others are not.
+        """
+        return True in [candles.empty for candles in self._data.values()]
 
     @classmethod
     def _check_symbol(cls, symbol: str) -> NoReturn:
@@ -52,7 +70,12 @@ class Market(StoredObject, ABC):
 
     @property
     def most_recent_timestamp(self) -> pd.Timestamp:
-        return self._data.iloc[-1].name
+        most_recent: Union['pd.Timestamp', None] = None
+        for candles in self._data.values():
+            last = candles.iloc[-1].name
+            if most_recent is None or last > most_recent:
+                most_recent = last
+        return most_recent
 
     @abstractmethod
     def candles(self, freq: str) -> pd.DataFrame:
