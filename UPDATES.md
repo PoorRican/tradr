@@ -14,9 +14,9 @@
 - [ ] Calculating strength from indicators is a bad idea. Indicators should only be used to make decisions. The entire 'strength' concept should be removed.
 - [ ] The arguments passed to `Indicator._row_decision` should exclusively be a `DataFrame`, not a `Series`.
 - [ ] There should be a way to plot indicator decisions on a chart.
-- [ ] Rename `FrequncySignal` to `IndicatorGroup`
-- [ ] Rename `FrequencySignal._compute()` to `FrequencySignal._compute_signals()`
-- [ ] Rename `FrequencySignal._process()` to `FrequencySignal._generate_indicator_graph()`
+- [X] Rename `FrequncySignal` to `IndicatorGroup`
+- [ ] Rename `IndicatorGroup._compute()` to `IndicatorGroup._compute_signals()`
+- [ ] Rename `IndicatorGroup._process()` to `IndicatorGroup._generate_indicator_graph()`
 
 # Strategies
 

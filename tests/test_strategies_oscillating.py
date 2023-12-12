@@ -5,7 +5,7 @@ from pytz import timezone
 
 from core.markets.GeminiMarket import GeminiMarket
 from core.markets.SimulatedMarket import SimulatedMarket
-from models import FrequencySignal, FailedTrade, FutureTrade
+from models import IndicatorGroup, FailedTrade, FutureTrade
 from primitives import Signal, Side, ReasonCode, TrendDirection
 from strategies.OscillationMixin import OscillationMixin
 
@@ -24,7 +24,7 @@ class BaseOscillatingStratTests(unittest.TestCase):
 class MainOscillatingStrategyTests(BaseOscillatingStratTests):
     def test_init(self):
         self.assertIsInstance(self.strategy.timeout, str)
-        self.assertIsInstance(self.strategy.indicators, FrequencySignal)
+        self.assertIsInstance(self.strategy.indicators, IndicatorGroup)
         # TODO: assert `indicators` param gets passed to `IndicatorContainer`
 
     def test_check_timeout(self):

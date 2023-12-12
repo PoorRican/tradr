@@ -5,7 +5,7 @@ from typing import Union, List
 import pandas as pd
 
 from misc import TZ
-from models import Indicator, FrequencySignal, FutureTrade
+from models import Indicator, IndicatorGroup, FutureTrade
 from primitives import Signal, ReasonCode
 from strategies.financials import FinancialsMixin
 
@@ -27,7 +27,7 @@ class OscillationMixin(FinancialsMixin, ABC):
         self.threads = threads
         self.lookback = lookback
         self.timeout: str = timeout
-        self.indicators: FrequencySignal = FrequencySignal(self.market, freq, indicators)
+        self.indicators: IndicatorGroup = IndicatorGroup(self.market, freq, indicators)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Ensure that order types oscillate between `sell` and `buy`.

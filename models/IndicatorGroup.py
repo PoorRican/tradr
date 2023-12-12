@@ -9,7 +9,7 @@ from models import Indicator
 from primitives import Signal
 
 
-class FrequencySignal(object):
+class IndicatorGroup(object):
     """ A functor for interacting with multiple `Indicator` objects.
 
     This class is meant to be used as a wrapper for multiple `Indicator` objects. It wraps the ability to update
@@ -40,7 +40,7 @@ class FrequencySignal(object):
             lookback: (optional)
                 Number of signal repetition to convert signal time-series data to `Signal` objects.
             executor: (optional)
-                Should be passed if called alongside other `FrequencySignal` objects.
+                Should be passed if called alongside other `IndicatorGroup` objects.
             threads:
                 Total number of threads to use. `0` disables threading and is meant to be passed while debugging.
         """
