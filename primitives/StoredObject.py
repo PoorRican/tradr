@@ -33,7 +33,7 @@ class StoredObject(ABC):
     exclude: Iterable[str]
     __name__ = 'StoredObject'
 
-    def __init__(self, *args, load: bool = False, exclude: Iterable[str] = None, **kwargs):
+    def __init__(self, *args, load: bool = False, exclude: Iterable[str] = None):
         super().__init__()
 
         self.exclude: Iterable[str] = exclude

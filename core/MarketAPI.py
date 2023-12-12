@@ -6,7 +6,7 @@ from warnings import warn
 
 import pandas as pd
 from pytz import timezone
-from typing import Dict, List, NoReturn, Union, Optional, Tuple
+from typing import Dict, List, NoReturn, Union, Optional, Tuple, Literal
 from yaml import safe_dump, safe_load
 import warnings
 
@@ -141,19 +141,28 @@ class MarketAPI(Market, ABC):
         Returns
             True if candle data is empty or is stale and therefore needs to be updated. Otherwise, returns False.
         """
-        if self._data.empty:
+        if self.empty:
             return True
         if now is None:
             now = datetime.datetime.now(tz=timezone(self._global_tz))
-        data = self._data.loc[frequency]
+        data = self.candles(frequency)
         last_point = data.iloc[-1].name
         delta: pd.Timedelta = now - last_point
 
-        return delta > pd.Timedelta(frequency)
+        return delta >= pd.Timedelta(frequency)
 
     @abstractmethod
     def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
-        """ Low-level function to retrieve candle data. """
+        """ Retrieve and return OHLC data from the market or exchange's network using their API.
+
+        Args:
+            freq (str):
+                the frequency of the data to be fetched, should be one of the valid_freqs.
+
+        Returns:
+             pd.DataFrame:
+                fetched data.
+        """
         pass
 
     @abstractmethod
@@ -161,14 +170,38 @@ class MarketAPI(Market, ABC):
         """ Generate `SuccessfulTrade` using data returned from """
         pass
 
+    def _integrate_frequency(self, freq: str, incoming: pd.DataFrame) -> NoReturn:
+        """ Integrate new candle data to the internal storage for a specific frequency.
+
+        New data is concatenated to internal data, duplicate records are eliminated and then
+        internal storage is updated.
+
+        Args:
+            freq (str):
+                the frequency of the data, should be one of the valid_freqs.
+            incoming (pd.DataFrame):
+                the incoming candle data to be integrated, should have the same timezone
+                as the internal data.
+        """
+
+        assert freq in self.valid_freqs
+        candles = self.candles(freq)
+        assert candles.index.tz == incoming.index.tz
+
+        combined = pd.concat([candles, incoming], axis="index")
+        combined = combined[~combined.index.duplicated(keep="first")]
+        self.candles(freq, combined)
+
     def _update_frequency(self, frequency: str) -> NoReturn:
         assert frequency in self.valid_freqs
-        assert frequency in self._data.index.levels[0]
 
-        self._data.loc[frequency] = self.fetch_candles(frequency)
+        fetched = self.fetch_candles(frequency)
+        self._integrate_frequency(frequency, fetched)
 
-    def candles(self, freq: str) -> pd.DataFrame:
-        """ Retrieve specified candle data.
+    def candles(self, freq: str, value: pd.DataFrame = None) -> Union['pd.DataFrame', None]:
+        """ Retrieve or set specified candle data.
+
+        Get or set mode is determined by `value`. If a value is passed, then the object is set.
 
         `_data` contains candle data for all frequencies, but index contains keys which correspond to
         different frequencies. This function checks that `freq` is valid.
@@ -177,12 +210,14 @@ class MarketAPI(Market, ABC):
         `_check_candle_age()` which returns True if candle data is stale.
         """
         assert freq in self.valid_freqs
-        assert freq in self._data.index.levels[0]
 
-        if self.auto_update and self._check_candle_age(freq):
-            self._update_frequency(freq)
+        if value is None:
+            if self.auto_update and self._check_candle_age(freq):
+                self._update_frequency(freq)
 
-        return self._data.loc[freq]
+            return self._data[freq]
+        else:
+            self._data[freq] = value
 
     @classmethod
     def restore(cls, fn: str = None, **kwargs) -> NoReturn:
@@ -242,17 +277,16 @@ class MarketAPI(Market, ABC):
         # self._check_tz()
 
         try:
-            _data = []
+            incoming = {}
             for freq in self.valid_freqs:
                 if self._check_candle_age(freq):
                     _candles = self.fetch_candles(freq)
                 else:
                     print(f"Using cached candle data for {freq}")
-                    _candles = self._data.loc[freq]
-                _data.append(_candles)
+                    _candles = self.candles(freq)
+                incoming[freq] = _candles
 
-            data = pd.concat(_data, axis='index', keys=self.valid_freqs)    # add keys
-            self._data = self._combine_candles(data)
+            self._integrate_candles(incoming)
 
             if save:
                 self.save()
@@ -283,16 +317,20 @@ class MarketAPI(Market, ABC):
         """
         pass
 
-    def _combine_candles(self, incoming: pd.DataFrame) -> pd.DataFrame:
-        if not self._data.index.empty:
-            assert self._data.index.get_level_values(1).tz == incoming.index.get_level_values(1).tz
-        combined = pd.concat([self._data, incoming])
-        combined = combined[~combined.index.duplicated(keep="first")]         # drop rows w/ duplicated index
+    def _integrate_candles(self, incoming: Dict['str', 'pd.DataFrame']) -> NoReturn:
+        """ Integrate new candle data with the internal storage for all frequencies.
 
-        _sorted = combined.sort_index()
-        del combined
-        _sorted.index = pd.MultiIndex.from_tuples(_sorted.index)
-        return _sorted
+        Args:
+            incoming (Dict[str, pd.DataFrame]):
+                A dictionary containing the new candle data to be integrated with the internal storage.
+                The keys of the dictionary are the valid frequency values and the values are the
+                corresponding dataframe.
+
+        Returns:
+            None. Internal storage `_data` is updated
+        """
+        for freq, candles in incoming.items():
+            self._integrate_frequency(freq, candles)
 
     def _repair_candles(self, data: pd.DataFrame, freq: str) -> pd.DataFrame:
         """ Fill in missing values for candle data via interpolation. """
@@ -355,15 +393,11 @@ class MarketAPI(Market, ABC):
         if tz is None:
             tz = self.tz
 
-        candles = []
-        _data = self._data.copy(True)
         for freq in self.valid_freqs:
-            _candles = _data.loc[freq]
+            _candles = self.candles(freq).copy()
             _dti = pd.to_datetime(_candles.index, utc=True).tz_convert(tz)
             _candles.index = _dti
-            candles.append(_candles)
-
-        self._data = pd.concat(candles, keys=self.valid_freqs)
+            self.candles(freq, _candles)
 
     def load(self, ignore_exclude: bool = False):
         self.load_from_db()     # call first to prevent `_data` from being overwritten
@@ -419,27 +453,32 @@ class MarketAPI(Market, ABC):
             print(f"Starting to update candle data for {symbol}")
             cls(api_secret=api_secret, api_key=api_key, symbol=symbol)
 
-    def save_to_db(self):
+    def save_to_db(self, mode: Literal['replace', 'append'] = 'replace',
+                   updates: Dict[str, 'pd.DataFrame'] = None):
         print(f"Saving to db")
         _prefix = f"{self.__name__}_{self.symbol}"
-        for freq in self.valid_freqs:
-            table = f"{_prefix}_{freq}"
-            self.candles(freq).to_sql(table, ENGINE, if_exists='replace', index=True)
+        if mode == 'replace':
+            for freq in self.valid_freqs:
+                table = f"{_prefix}_{freq}"
+                self.candles(freq).to_sql(table, ENGINE, if_exists=mode, index=True)
+        elif mode == 'append':
+            assert updates is not None
+            for freq, df in updates.items():
+                table = f"{_prefix}_{freq}"
+                df.to_sql(table, ENGINE, if_exists='append')
         print("Done saving to db")
 
     def load_from_db(self):
         print("Loading from db")
         try:
             _prefix = f"{self.__name__}_{self.symbol}"
-            data = []
             for freq in self.valid_freqs:
                 table = f"{_prefix}_{freq}"
                 _data = pd.read_sql_table(table, ENGINE)
                 _data.index = pd.DatetimeIndex(_data['index'])
                 del _data['index']
-                data.append(_data)
 
-            self._data = pd.concat(data, keys=self.valid_freqs)
+                self.candles(freq, _data)
 
             print("Done loading from db")
 

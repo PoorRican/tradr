@@ -7,8 +7,8 @@ import logging
 from warnings import warn
 
 from core.MarketAPI import MarketAPI
-from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade
-from primitives import Side, StoredObject
+from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade, Trade
+from primitives import Side, StoredObject, Signal
 
 
 class Strategy(StoredObject, ABC):
@@ -90,15 +90,16 @@ class Strategy(StoredObject, ABC):
     def candles(self):
         return self.market.candles(self.freq)
 
-    def _calc_profit(self, amount: float, rate: float) -> float:
+    def _calc_profit(self, trade: Trade, last_trade: Union['pd.Series', 'pd.DataFrame'] = None) -> float:
         """ Calculates profit of a sale.
 
         Returned profit should not be biased in any way. Any biasing on profit should be handled by
         a higher-level method such as `is_profitable()`.
         """
-        last_trade = self.orders.iloc[-1]
+        if last_trade is None:
+            last_trade = self.orders.iloc[-1]
 
-        gain = truncate(amount * rate, 2) - truncate(last_trade['amt'] * last_trade['rate'], 2)
+        gain = truncate(trade.cost, 2) - truncate(last_trade['cost'], 2)
         return gain - self.market.fee
 
     def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade):
@@ -133,6 +134,8 @@ class Strategy(StoredObject, ABC):
                 May be any derived class of `Trade`. However, if not `FutureTrade`, then `extrema`
                 must be passed.
         """
+        # `FutureTrade` is passed only when `trade` has been marked flagged to not attempt
+        #   therefore it should be a failed trade
         if type(trade) is FutureTrade:
             _trade, extrema = trade.separate()
         else:
@@ -189,7 +192,7 @@ class Strategy(StoredObject, ABC):
             else:
                 # `FutureTrade` is False if a trade has been initiated but will not be attempted.
                 #   This occurs when trade is not profitable, so it will be logged.
-                self._store_order(result)
+                self._store_order(result.convert(), result.point)
         return False
 
     @abstractmethod
@@ -208,7 +211,7 @@ class Strategy(StoredObject, ABC):
         pass
 
     @abstractmethod
-    def _calc_amount(self, extrema: pd.Timestamp, side: Side) -> float:
+    def _calc_amount(self, extrema: pd.Timestamp, side: Side, rate: float) -> float:
         """ Calculate amount for trade.
 
         This method should return the same value for given parameters, but should only be calculated once.
@@ -218,6 +221,8 @@ class Strategy(StoredObject, ABC):
                 Index/timestamp which triggered trade.
             side:
                 Type of trade. May be 'buy'/'sell'
+            rate:
+                Rate to use when calculating trade size
 
         Returns:
             Amount of asset to trade
@@ -271,19 +276,21 @@ class Strategy(StoredObject, ABC):
         return bool(accepted)
 
     @abstractmethod
-    def _is_profitable(self, amount: float, rate: float, side: Side,
-                       extrema: Union[str, 'pd.Timestamp'] = None) -> bool:
+    def _is_profitable(self, trade: Trade, extrema: Union[str, 'pd.Timestamp'] = None,
+                       strength: float = None) -> bool:
         """ Determine if the given trade is profitable or not.
 
-        This function is the final decision maker for whether an order should be attempted or not.
+        This function is the final decision maker for whether an order should be attempted or not. A profitable
+        sale is considered one where the total gain from a sale is higher or equal to a threshold; a profitable
+        buy is considered one where the short-term buy signal is higher than 2.
 
         Args:
-            amount:
-                amount of asset to be traded
-            rate:
-                rate of exchange
-            side:
-                buy or sell
+            trade:
+                Proposed trade
+            extrema:
+                Point in time that is responsible for initiating trade
+            strength:
+                Perceived strength of signal (stored in `trade.side`)
 
         Returns:
             Determination whether trade should be executed is binary. It is either profitable or not.
@@ -332,3 +339,27 @@ class Strategy(StoredObject, ABC):
         """
         _dir = f"{self.__name__}_{self.market.__name__}_{self.market.symbol}"
         return path.join(self.root, _dir)
+
+    def _propose_trade(self, signal: Signal, point: pd.Timestamp) -> Trade:
+        """ Generate a potential trade from given signal and point in time.
+
+        Notes:
+            This is essentially a wrapper for both `_calc_rate()` and `_calc_amount()`. As a wrapper,
+            a `Trade` ***will*** always be generated. Therefore, any logic determining if a trade should
+            be executed or not should be called *beforehand*. Additionally, `point` should be calculated before
+            this function. The designated function responsible is `_determine_position()`.
+
+        Args:
+            signal:
+                Type of `Trade` to generate.
+
+            point:
+                Point in time. No default is provided because a definite extrema should be determined
+                beforehand.
+        """
+        side: Side = Side(signal)
+        del signal
+        rate: float = self._calc_rate(point, side)
+        amount: float = self._calc_amount(point, side, rate)
+
+        return Trade(amount, rate, side)

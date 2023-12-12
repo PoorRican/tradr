@@ -25,13 +25,13 @@ class SimulatedMarket(Market):
     def __name__(self):
         return f"Simulated_{self.model.__name__}"
 
-    def _convert(self, trade: Trade, response: dict = None,) -> 'SuccessfulTrade':
-        trade = SuccessfulTrade(trade.amt, trade.rate, trade.side, self.orders)
+    def _translate(self, trade: Trade, response: dict = None,) -> 'SuccessfulTrade':
+        _trade = SuccessfulTrade(trade.amt, trade.rate, trade.side, self.orders)
         self.orders += 1
-        return trade
+        return _trade
 
     def post_order(self, trade: Trade) -> Union['SuccessfulTrade', bool]:
-        return self._convert(trade)
+        return self._translate(trade)
 
     @property
     def fee(self):
