@@ -121,7 +121,7 @@ class IndicatorGroup(object):
         shouldn't be any redundant access to specific frequency candle data outside of this functor.
         """
         self.last_update = self.candles.index[-1]
-        self._process(self.candles)
+        self._generate_indicator_graph(self.candles)
         self._compute_signals(self.candles)
 
     def _compute_signals(self, data: pd.DataFrame, buffer: bool = False,
@@ -165,8 +165,8 @@ class IndicatorGroup(object):
         else:
             [i.compute(_buffer) for i in self.indicators]
 
-    def _process(self, data: pd.DataFrame, buffer: bool = False,
-                 executor: concurrent.futures.Executor = None) -> NoReturn:
+    def _generate_indicator_graph(self, data: pd.DataFrame, buffer: bool = False,
+                                  executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Generate indicator data for given candle data.
 
         This is used to update `self.graph` for each indicator.

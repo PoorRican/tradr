@@ -16,7 +16,7 @@
 - [ ] There should be a way to plot indicator decisions on a chart.
 - [X] Rename `FrequncySignal` to `IndicatorGroup`
 - [X] Rename `IndicatorGroup._compute()` to `IndicatorGroup._compute_signals()`
-- [ ] Rename `IndicatorGroup._process()` to `IndicatorGroup._generate_indicator_graph()`
+- [X] Rename `IndicatorGroup._process()` to `IndicatorGroup._generate_indicator_graph()`
 
 # Strategies
 
