@@ -84,7 +84,7 @@ class OscillationMixin(FinancialsMixin, ABC):
                 Point in time to examine. During backtesting, `point` must be quantized to the keys in `candles`
 
         Notes:
-            `self.indicators.develop()` needs to be called beforehand.
+            `self.indicators.update()` needs to be called beforehand.
 
         Returns:
             `FutureTrade` if trade signals have initiated a trade. If trade is not profitable, then

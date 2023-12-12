@@ -179,7 +179,7 @@ class Strategy(StoredObject, ABC):
         if result is False:
             return False
         else:
-            if result:          # `FutureTrade` is True if trade is being attempted
+            if bool(result):          # `FutureTrade` is True if trade is being attempted
                 if result.point in self.orders.index:
                     msg = f"Attempted duplicate trade ({result.side}) for extrema {result.point}"
                     warn(msg)
@@ -191,7 +191,7 @@ class Strategy(StoredObject, ABC):
                         return self._sell(result)
             else:
                 # `FutureTrade` is False if a trade has been initiated but will not be attempted.
-                #   This occurs when trade is not profitable, so it will be logged.
+                #   This occurs when trade is not profitable, so it will be logged for debugging.
                 self._store_order(result.convert(), result.point)
         return False
 

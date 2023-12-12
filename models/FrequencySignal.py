@@ -10,17 +10,10 @@ from primitives import Signal
 
 
 class FrequencySignal(object):
-    """ Functor which derives a discrete trade signal from a given point of market data.
+    """ A functor for interacting with multiple `Indicator` objects.
 
-    This object serves to wrap several `Indicator` objects then handle their concurrent outputs, and connect them to
-    a market object.
-
-    Trade signal is derived from a combination of `Indicator` objects. Signal can be determined from
-    a majority of returned outputs or in unison, controlled by the `unison` flag. In essence, `FrequencySignal`
-    serves as a container for `Indicator` objects. This can be used in `Strategy` to direct trade decisions, or can be
-    used to indicate trends.
-
-    New incoming data is processed by `update()`.
+    This class is meant to be used as a wrapper for multiple `Indicator` objects. It wraps the ability to update
+    indicator and signal data. It also provides functions for determining consensus among indicators.
     """
     market: 'MarketAPI'
     indicators: List[Indicator]
@@ -100,7 +93,8 @@ class FrequencySignal(object):
                          keys=[i.name for i in self.indicators])
 
     def __call__(self, point: Union['pd.Timestamp', str]):
-        """ Return signal and strength at given point """
+        """ Return signal and strength at given point
+        """
         if type(point) == str:
             point = pd.Timestamp(point, tz=TZ)
         if self._update and self.timeout > point - self.last_update:
@@ -137,6 +131,12 @@ class FrequencySignal(object):
         Used to update `self.computed` which is dedicated to store all indicator data and should only be updated
         by this method.
 
+        If `buffer` is `True`, then only the last 50 rows of `data` is used to compute indicator data. This is
+        to prevent redundant computation of data that has already been computed.
+
+        If `threads` is a positive integer, then computation is done in parallel. Otherwise, computation is done
+        serially.
+
         Args:
             data:
                 Candle data. Should be shortened (by not using older data) when speed becomes an issue
@@ -167,14 +167,13 @@ class FrequencySignal(object):
 
     def _process(self, data: pd.DataFrame, buffer: bool = False,
                  executor: concurrent.futures.Executor = None) -> NoReturn:
-        """ Generate indicator data for all available given candle data.
+        """ Generate indicator data for given candle data.
 
-        Used to update `self.graph` which is dedicated to store all indicator data and should only be updated
-        by this method.
+        This is used to update `self.graph` for each indicator.
 
         Args:
             data:
-                Candle data. Should be shortened (by not using older data) when speed becomes an issue
+                Candle data.
             buffer:
                 Flag that turns buffering on or off
             executor:
@@ -240,16 +239,6 @@ class FrequencySignal(object):
     def signal(self, point: pd.Timestamp = None,
                executor: concurrent.futures.Executor = None) -> Union['Signal', None]:
         """ Infer signals from indicators.
-
-        Notes:
-            Processing and computation of indicator data is handled by `self.develop()` and shall therefore
-            not be called within this function.
-
-            `point` needs to be manipulated before accessing intraday and daily candle data. When accessing Gemini
-            6-hour market data, returned data is timestamped in intervals of 3, 9, 15, then 21. For daily data, returned
-            data is timestamped at around 20:00 or 21:00. Timestamps might be tied to timezone differences, so
-            data wrangling might need to be modified in the future. Maybe data wrangling could be avoided entirely by
-            just using built-in resampling.
 
         Args:
             point:
