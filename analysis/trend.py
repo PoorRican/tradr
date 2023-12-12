@@ -6,7 +6,7 @@ from typing import Mapping, Optional, NoReturn, Union
 from core import MarketAPI
 from misc import TZ
 from models.indicators import MACDRow, BBANDSRow, STOCHRSIRow
-from models import FrequencySignal
+from models import IndicatorGroup
 from primitives import TrendDirection, MarketTrend, Signal
 
 
@@ -41,7 +41,7 @@ class TrendDetector(object):
         self.threads = threads
         self.lookback = lookback
 
-        self._indicators: Mapping[str, 'FrequencySignal'] = self._create_indicator_container()
+        self._indicators: Mapping[str, 'IndicatorGroup'] = self._create_indicator_container()
         """ Store indicator data as a mapping where each key is a frequency.
         """
 
@@ -53,12 +53,12 @@ class TrendDetector(object):
     def computed(self):
         return pd.concat([i.computed for i in self._indicators.values()], keys=self._frequencies)
 
-    def _create_indicator_container(self) -> Mapping[str, 'FrequencySignal']:
+    def _create_indicator_container(self) -> Mapping[str, 'IndicatorGroup']:
         indicators = {}
         for freq in self._frequencies:
-            indicators[freq] = FrequencySignal(self.market, freq,
-                                               [MACDRow(), BBANDSRow(), STOCHRSIRow()],
-                                               update=False, threads=self.threads)
+            indicators[freq] = IndicatorGroup(self.market, freq,
+                                              [MACDRow(), BBANDSRow(), STOCHRSIRow()],
+                                              update=False, threads=self.threads)
         return indicators
 
     def candles(self, frequency: str) -> pd.DataFrame:

@@ -36,7 +36,6 @@ class Trade:
         Notes:
             This occurs after `__init__()` has been run.
         """
-        assert self.side.name in ('BUY', 'SELL')
         self.cost = truncate(self.amt * self.rate, 2)
 
     @classmethod

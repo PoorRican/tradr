@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 
 from core import GeminiMarket
 from misc import TZ
-from models import FrequencySignal
+from models import IndicatorGroup
 from models.indicators import TestingIndicator
 from primitives import Signal
 
@@ -54,7 +54,7 @@ class BaseFrequencySignal(unittest.TestCase):
         indicators = []
         for i in range(3):
             indicators.append(TestingIndicator())
-        self.obj: FrequencySignal = FrequencySignal(self.market, '15m', indicators, update=False)
+        self.obj: IndicatorGroup = IndicatorGroup(self.market, '15m', indicators, update=False)
 
         self.index = pd.date_range(pd.Timestamp.now(), tz=TZ, freq='15m', periods=3)
         self.idx = self.index[-1]

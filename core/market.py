@@ -30,7 +30,7 @@ class Market(StoredObject, ABC):
     asset_pairs: Tuple[str, ...]
     columns = ('open', 'high', 'low', 'close', 'volume')
 
-    def __init__(self, symbol: str = None, **kwargs):
+    def __init__(self, symbol: str, **kwargs):
         """
         Args:
             symbol:
@@ -47,7 +47,7 @@ class Market(StoredObject, ABC):
         and the values are the corresponding dataframe.
         """
 
-        self._check_symbol(symbol)
+        assert symbol in self.asset_pairs
         self.symbol = symbol
 
     @property
@@ -57,12 +57,9 @@ class Market(StoredObject, ABC):
         Technically, all values should either be empty or populated at any given time. There really
         shouldn't be a case where some values for a given frequency are populated while others are not.
         """
-        return True in [candles.empty for candles in self._data.values()]
-
-    @classmethod
-    def _check_symbol(cls, symbol: str) -> NoReturn:
-        if symbol:
-            assert symbol in cls.asset_pairs
+        empty_columns = [candles.empty for candles in self._data.values()]
+        no_columns = not empty_columns
+        return no_columns or any(empty_columns)
 
     @property
     def id(self) -> str:
@@ -104,3 +101,23 @@ class Market(StoredObject, ABC):
         """ Asserts that all candle data has monotonically increasing indexes """
         for freq in self.valid_freqs:
             assert self.candles(freq).index.is_monotonic_increasing
+
+    def save(self, ignore_exclude: bool = False) -> NoReturn:
+        """ Save instance data to disk """
+        super().save(ignore_exclude=ignore_exclude)
+
+        # save dataframes
+        for freq, candles in self._data.items():
+            _dir = Path(self.root, self._instance_dir)
+            _path = Path(_dir, f'candles_{freq}.csv')
+            candles.to_csv(_path, header=True)
+
+    def load(self, ignore_exclude: bool = False) -> NoReturn:
+        super().load(ignore_exclude=ignore_exclude)
+
+        # load dataframes
+        for freq in self.valid_freqs:
+            _dir = Path(self.root, self._instance_dir)
+            _path = Path(_dir, f'candles_{freq}.csv')
+            candles = pd.read_csv(_path, index_col=0, parse_dates=True)
+            self._data[freq] = candles

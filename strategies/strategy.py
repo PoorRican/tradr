@@ -151,19 +151,12 @@ class Strategy(StoredObject, ABC):
     def process(self, point: pd.Timestamp = None) -> bool:
         """ Determine and execute position.
 
-        Notes:
-            This method is the main interface method for automated trading. This function called
-            `_determine_position()`, which returns a `FutureTrade` if a trade has been initiated or otherwise
-            returns False. If position is False, then function exits and no further action is attempted.
+        This is the main interface method for interacting with a strategy.
 
-            If a trade has been initiated, it might have already been turned down within the function chain
-            called within `_determine_position()`. Continuation of trade is determined by `FutureTrade.attempt`
-            flag. If True and is not a duplicate (determined by extrema that trade is based), then trade is passed
-            to `_buy()` or `_sell()` function to be executed on open market. If trade is then rejected, it is handled
-            by internally by `_add_order()`. On the other hand, if `_determine_position()` returns a `FutureTrade`
-            that has already been turned down, then trade is appended to `failed_orders` container. Ideally,
-            `_add_order()` should return a `FutureTrade` and there should be a dedicated function which appends
-            trades to `orders` or `failed_orders` containers.
+        This handles the following:
+        - Determines whether a buy or sell order should be executed
+        - Executes order
+        - Logging of orders in the appropriate container
 
         Args:
             point:
@@ -179,7 +172,7 @@ class Strategy(StoredObject, ABC):
         if result is False:
             return False
         else:
-            if result:          # `FutureTrade` is True if trade is being attempted
+            if bool(result):          # `FutureTrade` is True if trade is being attempted
                 if result.point in self.orders.index:
                     msg = f"Attempted duplicate trade ({result.side}) for extrema {result.point}"
                     warn(msg)
@@ -191,7 +184,7 @@ class Strategy(StoredObject, ABC):
                         return self._sell(result)
             else:
                 # `FutureTrade` is False if a trade has been initiated but will not be attempted.
-                #   This occurs when trade is not profitable, so it will be logged.
+                #   This occurs when trade is not profitable, so it will be logged for debugging.
                 self._store_order(result.convert(), result.point)
         return False
 

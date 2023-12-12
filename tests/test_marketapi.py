@@ -220,7 +220,6 @@ class InstanceTests(BaseMarketAPITests):
         self.root = f"/tmp/root_{dt.datetime.now()}"
         mkdir(self.root)
 
-        self._class._check_symbol = MagicMock()
         self._class.root = self.root
 
     def tearDown(self):
