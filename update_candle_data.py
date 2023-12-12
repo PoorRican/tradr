@@ -8,7 +8,8 @@ from core import GeminiMarket
 
 
 class AssetGroup(object):
-    assets: ClassVar[Tuple[str, ...]] = ('btcusd', 'ethusd', 'dogeusd', 'dogeusd', 'avaxusd')
+    assets: ClassVar[Tuple[str, ...]] = ('btcusd', 'ethusd', 'dogeusd', 'dogeusd', 'avaxusd',
+                                         'solusd')
 
     instances: Tuple[GeminiMarket, ...]
 
