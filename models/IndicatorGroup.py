@@ -122,10 +122,10 @@ class IndicatorGroup(object):
         """
         self.last_update = self.candles.index[-1]
         self._process(self.candles)
-        self._compute(self.candles)
+        self._compute_signals(self.candles)
 
-    def _compute(self, data: pd.DataFrame, buffer: bool = False,
-                 executor: concurrent.futures.Executor = None) -> NoReturn:
+    def _compute_signals(self, data: pd.DataFrame, buffer: bool = False,
+                         executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Compute signals from indicator graph data
 
         Used to update `self.computed` which is dedicated to store all indicator data and should only be updated
