@@ -1,8 +1,9 @@
 # Data Handlers
 
 - [ ] Ensure that data is handled correctly
-- [ ] Create a script to constantly download and update local datasets
-- [ ] Remove all db references and revert back to using local files
+- [X] Create a script to constantly download and update local datasets
+- [X] Remove all db references and revert back to using local files
+- [ ] Candle data should be stored individually by frequency
 
 # Market
 

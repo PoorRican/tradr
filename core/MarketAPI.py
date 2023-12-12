@@ -47,9 +47,9 @@ class MarketAPI(Market, ABC):
 
     instances: Dict[str, 'MarketAPI'] = {}
 
-    def __init__(self, api_key: str = None, api_secret: str = None,
+    def __init__(self, symbol: str, api_key: str = None, api_secret: str = None,
                  update: bool = True, load: bool = True, ignore_exclude: bool = False, auto_update: bool = True,
-                 symbol: str = None, fee: float = None, **kwargs):
+                 fee: float = None, **kwargs):
         """
         Args:
             api_key:
@@ -88,7 +88,7 @@ class MarketAPI(Market, ABC):
             self.update(load=False, save=False)
             self.save(ignore_exclude=True)
         elif update:
-            self.update()
+            self.update(load=load)
         elif load:
             self.load()
 
@@ -102,7 +102,7 @@ class MarketAPI(Market, ABC):
         return self._fee()
 
     @property
-    def _stale_candles(self) -> Tuple[str]:
+    def _stale_candles(self) -> Tuple[str, ...]:
         """ Check all candles for stale data
 
         Returns
@@ -145,14 +145,14 @@ class MarketAPI(Market, ABC):
             return True
         if now is None:
             now = datetime.datetime.now(tz=timezone(self._global_tz))
-        data = self.candles(frequency)
+        data = self._data[frequency]
         last_point = data.iloc[-1].name
         delta: pd.Timedelta = now - last_point
 
         return delta >= pd.Timedelta(frequency)
 
     @abstractmethod
-    def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+    def _fetch_candles(self, freq: str) -> pd.DataFrame:
         """ Retrieve and return OHLC data from the market or exchange's network using their API.
 
         Args:
@@ -173,8 +173,9 @@ class MarketAPI(Market, ABC):
     def _integrate_frequency(self, freq: str, incoming: pd.DataFrame) -> NoReturn:
         """ Integrate new candle data to the internal storage for a specific frequency.
 
-        New data is concatenated to internal data, duplicate records are eliminated and then
-        internal storage is updated.
+        Any new data is concatenated to internal data, duplicate records are eliminated and then
+        internal storage is updated. If there is no existing data, then incoming data is simply
+        stored.
 
         Args:
             freq (str):
@@ -183,16 +184,27 @@ class MarketAPI(Market, ABC):
                 the incoming candle data to be integrated, should have the same timezone
                 as the internal data.
         """
-
         assert freq in self.valid_freqs
-        candles = self.candles(freq)
-        assert candles.index.tz == incoming.index.tz
+        try:
+            candles = self._data[freq]
+            assert candles.index.tz == incoming.index.tz
 
-        combined = pd.concat([candles, incoming], axis="index")
-        combined = combined[~combined.index.duplicated(keep="first")]
-        self.candles(freq, combined)
+            combined = pd.concat([candles, incoming], axis="index")
+            combined = combined[~combined.index.duplicated(keep="first")]
+            self._data[freq] = combined
+        except KeyError:
+            self._data[freq] = incoming
 
     def _update_frequency(self, frequency: str) -> NoReturn:
+        """ Update and integrate candle data for a specific frequency.
+
+        This function is called when `auto_update` is True and candle data is stale. It fetches new candle data
+        and then calls `_integrate_frequency()` to update internal storage.
+
+        Args:
+            frequency (str):
+                the frequency of the data, should be one of the valid_freqs.
+        """
         assert frequency in self.valid_freqs
 
         fetched = self.fetch_candles(frequency)
@@ -355,7 +367,7 @@ class MarketAPI(Market, ABC):
 
         return buffer
 
-    def fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+    def fetch_candles(self, freq: str) -> pd.DataFrame:
         """ Fetch and clean candle data """
         print(f"Fetching candle data for {freq}...")
         data = self._fetch_candles(freq)
@@ -394,13 +406,13 @@ class MarketAPI(Market, ABC):
             tz = self.tz
 
         for freq in self.valid_freqs:
-            _candles = self.candles(freq).copy()
+            _candles = self._data[freq].copy()
             _dti = pd.to_datetime(_candles.index, utc=True).tz_convert(tz)
             _candles.index = _dti
-            self.candles(freq, _candles)
+            self._data[freq] = _candles
 
     def load(self, ignore_exclude: bool = False):
-        self.load_from_db()     # call first to prevent `_data` from being overwritten
+        # self.load_from_db()     # call first to prevent `_data` from being overwritten
 
         super().load(ignore_exclude)
 
@@ -410,7 +422,7 @@ class MarketAPI(Market, ABC):
     def save(self, ignore_exclude: bool = False):
         super().save(ignore_exclude)
 
-        self.save_to_db()
+        # self.save_to_db()
 
     @classmethod
     @property

@@ -93,7 +93,7 @@ class GeminiMarket(MarketAPI):
 
         return 0.35
 
-    def _fetch_candles(self, freq: Optional[str] = None) -> pd.DataFrame:
+    def _fetch_candles(self, freq: str) -> pd.DataFrame:
         """ Low-level function to retrieve candle data.
 
         Ticker frequency is determined by `self.freq` and notated on return type via the `DataFrame.attrs` convention.
@@ -110,8 +110,7 @@ class GeminiMarket(MarketAPI):
 
         Args:
             freq:
-                Optional value denoting desired candle frequency.
-                When false-y, `self.freq` is used to fetch candle data.
+                Desired candle frequency for ticker data.
 
         Raises:
             AssertionError: if `freq` is not a valid interval.
@@ -138,7 +137,7 @@ class GeminiMarket(MarketAPI):
         # set flag/metadata on `DataFrame`
         # TODO: use pandas' built-in `freq` value for index
         data.attrs['freq'] = freq
-        data.index = data.index.tz_localize(timezone(self._global_tz), ambiguous='infer')
+        data.index = data.index.tz_localize(timezone(self._global_tz), ambiguous='NaT')
 
         return data
 
