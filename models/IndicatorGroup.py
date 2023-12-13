@@ -122,10 +122,10 @@ class IndicatorGroup(object):
         """
         self.last_update = self.candles.index[-1]
         self._generate_indicator_graphs(self.candles)
-        self._compute_signals(self.candles)
+        self._compute_decisions(self.candles)
 
-    def _compute_signals(self, data: pd.DataFrame, buffer: bool = False,
-                         executor: concurrent.futures.Executor = None) -> NoReturn:
+    def _compute_decisions(self, data: pd.DataFrame, buffer: bool = False,
+                           executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Compute signals from indicator graph data
 
         Used to update `self.computed` which is dedicated to store all indicator data and should only be updated
@@ -155,15 +155,15 @@ class IndicatorGroup(object):
         if self.threads:
 
             if executor is not None:
-                self.func_threads('compute', executor=executor, candles=_buffer)
+                self.func_threads('compute_decision', executor=executor, candles=_buffer)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
                 # Start the load operations and mark each future with its URL
-                fs = self.func_threads('compute', executor=executor, candles=_buffer)
+                fs = self.func_threads('compute_decision', executor=executor, candles=_buffer)
                 concurrent.futures.wait(fs)
                 # result would be accessible by `future.result for future in ...`
         else:
-            [i.compute(_buffer) for i in self.indicators]
+            [i.compute_decision(_buffer) for i in self.indicators]
 
     def _generate_indicator_graphs(self, data: pd.DataFrame, buffer: bool = False,
                                    executor: concurrent.futures.Executor = None) -> NoReturn:

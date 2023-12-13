@@ -116,7 +116,7 @@ class Indicator(ABC):
         # self.graph = pd.concat([self.graph, buffer.loc[updates.values]])
         self.graph = buffer
 
-    def compute(self, candles: pd.DataFrame) -> NoReturn:
+    def compute_decision(self, candles: pd.DataFrame) -> NoReturn:
         """ Compute `Signal` and strength for each row in `graph`.
 
         This function is used for computing `Signal` and strength for each row in `graph`.
