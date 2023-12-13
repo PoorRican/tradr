@@ -18,7 +18,7 @@
 - [X] Rename `FrequncySignal` to `IndicatorGroup`
 - [X] Rename `IndicatorGroup._compute()` to `IndicatorGroup._compute_signals()`
 - [X] Rename `IndicatorGroup._process()` to `IndicatorGroup._generate_indicator_graph()`
-- [ ] Improve `BBandsRow._row_decision()` to be only give `SELL` or `BUY` signal more closely to bounds
+- [X] Improve `BBandsRow._row_decision()` to be only give `SELL` or `BUY` signal more closely to bounds
 - [ ] Allow `IndicatorGroup` to be passed a function to evaluate buy signals. That way strategies can have more control over how to evaluate signals from indicators. For example, BollingerBands should restrict the overall output.
 
 # Strategies
@@ -31,3 +31,4 @@
 - [ ] `TrendDetector` should use a better indicator such as a combination of Bollinger Bands and EMA to determine the trend
 - [ ] Add legends to plotting
 - [ ] Remove assets and amt from graph. Or at least plot this graph at the end.
+- [ ] PNL function is way wrong...
