@@ -80,7 +80,7 @@ class Indicator(ABC):
 
         return pd.DataFrame(index=index, columns=list(columns), dtype=float)
 
-    def process(self, candles: pd.DataFrame, **kwargs) -> NoReturn:
+    def generate_indicator_graph(self, candles: pd.DataFrame, **kwargs) -> NoReturn:
         """ Processes incoming `data` and populates `graph`.
 
         This function is used for computing indicator functions with existing or new data.
