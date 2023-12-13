@@ -74,8 +74,6 @@ class Plotter(object):
                 Optional flag to render failed orders on chart to reduce obfuscation from too many trades.
                 Typically, rendering of failed trades should be done when focusing on a window of time
                 and is not necessary for judging strategy performance.
-
-                Argument is passed to `_render_decisions()`.
         """
         if start:
             if type(start) is str:
@@ -101,8 +99,8 @@ class Plotter(object):
         pri.plot(candles.index, candles['close'], color=to_rgba('blue', 0.8))
 
         self._plot_decisions(orders, render_failed)
-        self._plot_money(index=candles.index, assets=assets, capital=capital)
         self._plot_indicators(endpoints)
+        self._plot_money(index=candles.index, assets=assets, capital=capital)
 
         if render:
             plt.show()
@@ -128,10 +126,10 @@ class Plotter(object):
         _capital = _capital.interpolate()
         sec2.plot(_capital.index, _capital.values, color="green")
 
-    def _plot_decisions(self, orders: pd.DataFrame, render_failed: bool = False) -> NoReturn:
+    def _plot_decisions(self, orders: pd.DataFrame, render_failed: bool = False) -> None:
+        """ Plot trade enter and exit locations. """
         if orders.empty:
             return
-        """ Plot trade enter and exit locations. """
         figure = self.subplots[Location.PRIMARY]
         size = 10
         scalar = 4
