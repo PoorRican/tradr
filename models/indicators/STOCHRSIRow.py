@@ -11,7 +11,7 @@ from primitives import Signal, Normalizer
 class STOCHRSIRow(Indicator):
     name = 'STOCHRSI'
     _function = STOCHRSI
-    _parameters = {'timeperiod': 14, 'fastk_period': 3, 'fastd_period': 3}
+    _parameters = {'timeperiod': 14, 'fastk_period': 5, 'fastd_period': 3}
     _source = 'close'
 
     columns = ('fastk', 'fastd')
@@ -22,8 +22,6 @@ class STOCHRSIRow(Indicator):
         self._oversold = oversold
         self._threshold = threshold
 
-        self._decision_normalizer = Normalizer(self, 'graph', ['fastk', 'fastd'], diff=True, apply_abs=True)
-
     def oversold(self, d: float, k: float) -> bool:
         return self._oversold < d <= k
 
@@ -31,20 +29,18 @@ class STOCHRSIRow(Indicator):
         return self._overbought > d >= k
 
     def _row_decision(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame = None) -> Signal:
-        fastk = row['fastk']
+        k = row['fastk']
+        d = row['fastd']
 
-        if hasattr(fastk, '__iter__'):
-            fastk = fastk[0]
+        if hasattr(k, '__iter__'):
+            k = k[0]
+        if hasattr(d, '__iter__'):
+            d = d[0]
 
-        _point: pd.Timestamp = row.name
-        _normals = self._decision_normalizer(_point)
-
-        if _normals.iloc[-1] <= self._threshold:
-            if self._oversold <= fastk:
-                return Signal.SELL
-            elif self._overbought >= fastk:
-                return Signal.BUY
-
+        if self.overbought(d, k):
+            return Signal.SELL
+        elif self.oversold(d, k):
+            return Signal.BUY
         return Signal.HOLD
 
     def _row_strength(self, row: Union['pd.Series', 'pd.DataFrame'], candles: pd.DataFrame) -> float:
