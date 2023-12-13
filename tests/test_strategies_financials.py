@@ -231,29 +231,33 @@ class PNLTestCases(BaseFinancialsMixinTestCase):
         self.skipTest('')
 
     def test_unrealized_gain(self):
+        incomplete_order_data = {
+            'rate': [100, 200, 300, 400],
+            'amt': [1, 1, 1, 1],
+            'id': [1, 2, 3, 4],
+        }
+        order_data = {
+            'rate': [100, 200, 300, 400, 500],
+            'amt': [1, 1, 1, 1, 1],
+            'side': [Side.BUY, Side.BUY, Side.BUY, Side.BUY, Side.BUY],
+            'id': [1, 2, 3, 4, 5],
+        }
         # fill incomplete
-        _incomplete_rates = [200, 150, 225]
-        _incomplete_amt = [3, 2, 1]
-        _incomplete_ids = [1, 2, 3]
-        incomplete = pd.DataFrame({'rate': _incomplete_rates, 'amt': _incomplete_amt, 'id': _incomplete_ids})
+        incomplete = pd.DataFrame(incomplete_order_data)
         self.strategy.unpaired = MagicMock(return_value=incomplete)
 
         # fill orders
-        _order_rates = [150, 250]
-        _order_amt = [2, 1]
-        _order_side = [Side.BUY, Side.BUY]
-        _order_ids = [2, 4]
-        orders = pd.DataFrame({'rate': _order_rates, 'amt': _order_amt, 'id': _order_ids, 'side': _order_side})
+        orders = pd.DataFrame(order_data)
         self.strategy.orders = orders
 
         last_order = self.strategy.orders.tail(1)
 
         # assert sum of incomplete + last order
-        unpaired = pd.concat([incomplete, last_order], ignore_index=True)
+        unpaired = orders.copy()
         _max = max(unpaired['rate'])
         _sum = unpaired['amt'].sum() * _max
 
-        self.assertEqual(_sum, 7 * 250, 'Expected calculation is incorrect')
+        self.assertEqual(_sum, 5 * 500, 'Expected calculation is incorrect')
         self.assertEqual(_sum, self.strategy.unrealized_gain(), 'Unrealized gain did not return correct sum')
 
 

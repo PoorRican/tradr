@@ -285,10 +285,10 @@ class FinancialsMixin(Strategy, ABC):
         if unpaired.empty:
             return 0
 
-        _last_order = self.orders.tail(1)
-        # NOTE: indexing `_last_order` does not return literals but instead returns rows and columns
-        if Side.BUY in _last_order['side'] and not _last_order['id'].isin(unpaired['id']).max():
-            unpaired = pd.concat([unpaired, _last_order], ignore_index=True)
+        # account for last buy order if it is not in `unpaired`
+        _last_order = self.orders.iloc[-1]
+        if _last_order['side'] == Side.BUY and not _last_order['id'] in unpaired['id']:
+            unpaired = pd.concat([pd.DataFrame(_last_order).T, unpaired], axis='index')
         highest = max(unpaired['rate'])
         return unpaired['amt'].sum() * highest
 
