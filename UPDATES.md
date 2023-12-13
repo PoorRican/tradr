@@ -1,9 +1,9 @@
 # Data Handlers
 
-- [ ] Ensure that data is handled correctly
+- [X] Ensure that data is handled correctly
 - [X] Create a script to constantly download and update local datasets
 - [X] Remove all db references and revert back to using local files
-- [ ] Candle data should be stored individually by frequency
+- [X] Candle data should be stored individually by frequency
 
 # Market
 
@@ -18,6 +18,8 @@
 - [X] Rename `FrequncySignal` to `IndicatorGroup`
 - [X] Rename `IndicatorGroup._compute()` to `IndicatorGroup._compute_signals()`
 - [X] Rename `IndicatorGroup._process()` to `IndicatorGroup._generate_indicator_graph()`
+- [ ] Improve `BBandsRow._row_decision()` to be only give `SELL` or `BUY` signal more closely to bounds
+- [ ] Allow `IndicatorGroup` to be passed a function to evaluate buy signals. That way strategies can have more control over how to evaluate signals from indicators. For example, BollingerBands should restrict the overall output.
 
 # Strategies
 
@@ -27,3 +29,5 @@
 
 - [ ] `TrendDetector` should use ranking of frequencies instead of a simple "mean". For example, if 1day is `SELL`, and `1h` is `BUY`, then the final decision should lean more towards `BUY`.
 - [ ] `TrendDetector` should use a better indicator such as a combination of Bollinger Bands and EMA to determine the trend
+- [ ] Add legends to plotting
+- [ ] Remove assets and amt from graph. Or at least plot this graph at the end.

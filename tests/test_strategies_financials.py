@@ -19,7 +19,7 @@ class BaseFinancialsMixinTestCase(unittest.TestCase):
         self.assets = 1
         self.order_count = 4
         self.strategy = FinancialsMixin(market=self.market, threshold=self.threshold, freq='',
-                                        capital=self.capital, assets=self.assets, order_count=self.order_count)
+                                        capital=self.capital, assets=self.assets, order_limit=self.order_count)
 
 
 class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
@@ -30,7 +30,7 @@ class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
         self.assertEqual(self.strategy.threshold, self.threshold)
         self.assertEqual(self.strategy.capital, self.capital)
         self.assertEqual(self.strategy.assets, self.assets)
-        self.assertEqual(self.strategy.order_count, self.order_count)
+        self.assertEqual(self.strategy.order_limit, self.order_count)
 
     def test_check_unpaired(self):
         """ Assert that orders with rates lower than given value are returned """
@@ -68,7 +68,7 @@ class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
     def test_remaining(self):
         self.assertTrue(self.strategy.incomplete.empty)
 
-        self.strategy.order_count = 5
+        self.strategy.order_limit = 5
         self.assertEqual(self.strategy._remaining, 5)
 
         self.strategy.incomplete = [i for i in range(5)]
@@ -136,13 +136,13 @@ class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
 
     def test_starting(self):
         self.strategy.capital = 1000
-        self.strategy.order_count = 10
+        self.strategy.order_limit = 10
         self.strategy.incomplete = []
-        self.assertEqual(self.strategy.starting, 100)
+        self.assertEqual(self.strategy.available_capital, 100)
 
         self.strategy.incomplete = [1] * 10
         with self.assertWarns(Warning):
-            self.assertEqual(self.strategy.starting, 100)
+            self.assertEqual(self.strategy.available_capital, 100)
 
 
 class AssetsCapitalTests(BaseFinancialsMixinTestCase):

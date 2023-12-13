@@ -23,8 +23,13 @@ class Simulation(object):
         TODO:
             - Implement a way to store and access historical values.
     """
+
+    current_progress: int
+    strategy: OscillationMixin
+
     def __init__(self, strategy: OscillationMixin):
-        self.strategy: OscillationMixin = strategy
+        self.current_progress = 0
+        self.strategy = strategy
 
     @property
     def market(self):
@@ -39,10 +44,11 @@ class Simulation(object):
                 completion every 10%.
         """
         progress = self._progress(current)
-        if progress > 0 and progress % interval == 0:
+        if progress > 0 and progress % interval == 0 and progress > self.current_progress:
+            self.current_progress = progress
             print("%d completed" % progress)
 
-    def _progress(self, current: int):
+    def _progress(self, current: int) -> int:
         """ Show percentage complete as an integer """
         total = len(self.strategy.candles)
         return (100 * current) // total
@@ -82,7 +88,11 @@ class Simulation(object):
 
             # TODO: enable multithreading
             self.print_progress(i)
-            self.strategy.process(point)
+            try:
+                self.strategy.process(point)
+            except KeyError:
+                # for debugging
+                continue
 
         msg = "Finished processing data"
         logging.info(msg)
