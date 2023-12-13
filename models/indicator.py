@@ -97,20 +97,12 @@ class Indicator(ABC):
 
         """
         assert not candles.empty
-        # TODO: make async
 
-        # new or empty rows get updated
-        _index = list(candles.index.values)
-        _index.extend(list(self.graph.values))
-        if type(candles.index) == pd.DatetimeIndex:
-            _index = pd.DatetimeIndex(_index)
-        else:
-            _index = pd.Index(_index)
-
-        if len(_index.notna()) != len(_index):
+        # assert that index contains no gaps not empty
+        if len(self.graph.index.notna()) != len(self.graph.index):
             raise ValueError('Resulting index contains a date-gap')
 
-        _not_empty = self.graph.notna()
+        # _not_empty = self.graph.notna()
         # updates = _not_empty.index.isin(_index)
 
         # setup and run indicator function
