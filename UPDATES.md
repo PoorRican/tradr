@@ -24,6 +24,7 @@
 # Strategies
 
 - [ ] `FinancialsMixin` should be used as an attribute instead of a mixin.
+- [ ] unpaired orders are not being accounted for. This affects pnl and should be of upmost priority.
 
 # Analysis
 
@@ -31,4 +32,4 @@
 - [ ] `TrendDetector` should use a better indicator such as a combination of Bollinger Bands and EMA to determine the trend
 - [ ] Add legends to plotting
 - [ ] Remove assets and amt from graph. Or at least plot this graph at the end.
-- [ ] PNL function is way wrong...
+- [X] PNL function is way wrong...

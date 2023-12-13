@@ -192,14 +192,16 @@ class FinancialsMixin(Strategy, ABC):
         return self.capital / self.order_limit
 
     def pnl(self) -> float:
-        # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning
-        #       the number of unpaired orders and unrealized gain.
         buy_orders = self.orders[self.orders['side'] == Side.BUY]
         sell_orders = self.orders[self.orders['side'] == Side.SELL]
 
         buy_cost = buy_orders['cost'].sum()
         sell_cost = sell_orders['cost'].sum()
-        return sell_cost - buy_cost
+
+        realized_pnl = sell_cost - buy_cost
+        unrealized = self.unrealized_gain()
+
+        return realized_pnl + unrealized
 
     def _adjust_capital(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
         """ Increase available capital when assets are sold, and decrease when assets are bought.
