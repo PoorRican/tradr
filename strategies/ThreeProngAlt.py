@@ -3,7 +3,7 @@ from math import isnan
 import pandas as pd
 from typing import Union, List, ClassVar
 
-from analysis.trend import TrendDetector, STRONG_THRESHOLD
+from analysis.trend import STRONG_THRESHOLD
 from models import Trade
 from models.indicators import *
 from strategies.OscillationMixin import OscillationMixin
@@ -14,36 +14,8 @@ from primitives import Side, TrendDirection, MarketTrend
 
 class ThreeProngAlt(OscillationMixin):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
-
-    A buy or sale is made based on lt/gt comparisons of all three signals, and theoretically
-    seems adept at trading with an extremely volatile stock like Bitcoin. Each buy costs the same
-    amount of the underlying currency (regardless of the amount of asset it purchases). When
-    selling, whatever amount of asset was bought becomes sold. The intent is to maximize the
-    underlying currency. This logic should defeat the issue that arises when trading a fixed amount
-    of an asset, where a rapid price increase could cause the fixed amount of asset to exceed available
-    capital. However, the strategy forces alternation between buying and selling of an asset.
-    Using these indicators, any generated signal is sure to be profitable.
-
-    Logic:
-
-        ***Buys***: price must be below 50% of difference between middle and lower band,
-        MACD must be negative, and StochRSI K and D must be below 20 with K < D.
-
-        ***Sell***: price must be above 50% of difference between upper and middle band,
-        MACD must be positive, and StochRSI K and D must be above 80 with K > D.
-
-    Signal parameters (for TradingView) are all set to close price. For Bollinger Bands,
-    length is 20, StdDev is 2 with 0 offset. MACD uses EMA for both averages and has a
-    fast / slow length of 6 and 26 respectively, signal smoothing is 9. StochRSI uses
-    K/D values of 3, with a Stochastic and RSI length of 14.
     """
     __name__ = 'ThreeProngAlt'
-
-    BUY_AMOUNT: ClassVar[int] = 10
-    """ Number of buy orders to allow.
-
-    This is used in `_calc_amount()` to determine how many buy orders are allowed to be placed.
-    """
 
     def __init__(self, **kwargs):
         """
@@ -148,7 +120,7 @@ class ThreeProngAlt(OscillationMixin):
                 return self.assets
 
         else:       # Side.BUY
-            total = (self.starting / rate) / self.BUY_AMOUNT
+            total = (self.available_capital / rate)
 
             if self.capital < (total * rate):
                 return self.capital / rate

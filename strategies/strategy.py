@@ -38,6 +38,35 @@ class Strategy(StoredObject, ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
+    orders: pd.DataFrame
+    """ History of attempt orders performed by this strategy. Timestamps of extrema are used as indexes.
+    
+    Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
+    is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
+    both rigidity and convenience.
+    
+    Notes:
+        Columns and dtypes should be identical to those of `SuccessfulTrade`
+    """
+
+    failed_orders: pd.DataFrame
+    """ History of orders that were not accepted by the market.
+
+    Could be used to:
+        - Debug
+        - Test performance of computational trading methods (ie: `_calc_rate`, and related)
+        - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
+    """
+
+    market: MarketAPI
+    """ Market client to use for market data and trading.
+    """
+
+    freq: str
+    """ Operating frequency for strategy. Both trade decisions (signals derived from `indicator` and how often
+    trading decisions are evaluated) will be derived from this frequency.
+    """
+
     def __init__(self, market: 'MarketAPI', freq: str, **kwargs):
         """
 
@@ -55,36 +84,11 @@ class Strategy(StoredObject, ABC):
         """
         super().__init__(**kwargs)
         self.orders = SuccessfulTrade.container()
-        """ History of attempt orders performed by this strategy. Timestamps of extrema are used as indexes.
-        
-        Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
-        is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
-        both rigidity and convenience.
-        
-        Notes:
-            Columns and dtypes should be identical to those of `SuccessfulTrade`
-        """
 
         self.failed_orders = FailedTrade.container()
-        """ History of orders that were not accepted by the market.
-        
-        Could be used to:
-            - Debug
-            - Test performance of computational trading methods (ie: `_calc_rate`, and related)
-            - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
-        """
 
         self.market = market
         self.freq = freq
-
-    @classmethod
-    def factory(cls, market: 'MarketAPI', params: List[Dict]):
-        instances = []
-        # TODO: markets need to by dynamically loaded
-        for i in params:
-            instances.append(cls(market=market, **i))
-
-        return instances
 
     @property
     def candles(self):

@@ -18,7 +18,7 @@ class FinancialsMixin(Strategy, ABC):
     trade.
 
     Open/incomplete buy orders are managed by the `incomplete` container. Assets are considered incomplete if assets
-    acquired have not been sold yet. The number of open/incomplete buy orders is limited by `order_count`.
+    acquired have not been sold yet. The number of open/incomplete buy orders is limited by `order_limit`.
 
     Capitol and assets are tracked by `capital` and `assets` respectfully. The starting capital to use per trade is
     calculated by `starting` and its returned value shall be as the starting basis for trading in `_calc_amount()`.
@@ -37,32 +37,61 @@ class FinancialsMixin(Strategy, ABC):
         -   Convert `capital` and `assets` to time-series that tracks balance over time, and why values change
             (eg: user-initiated deposit, trade id)
     """
-    def __init__(self, threshold: float = None, capital: float = 0, assets: float = 0, order_count: int = 4, **kwargs):
+
+    incomplete: pd.DataFrame
+    """ Store for incomplete/open buy orders.
+
+    `id` contains the original order ID as found in `orders` and is used when pivoting between the two tables.
+    The `unpaired` method should be used when accessing rows from `orders`. Additionally, during trading,
+    `_check_unpaired` is used to select incomplete orders based off of rate.
+
+    The `amt` column serves as a ledger to track how much of the asset has been sold (since trade amounts are
+    dynamically calculated taking into account market trends). When assets acquired by an incomplete order are sold,
+    rows are removed from container by `_clean_incomplete()`, but when partially sold, amount of assets sold is
+    deducted unsold amount (denoted in the `amt` column).
+    """
+
+    threshold: float
+    """ Minimum total profit per trade in dollar amounts.
+
+    Profit from all sell trades must be equal to or greater than this value.
+    
+    Since marginal changes in price are intended to be exploited for gains, this number should be set accordingly
+    in proportion to the asset price and supplied capital. This will most likely be set to < 1.0.
+    """
+
+    _capital: pd.Series
+    """ Simple total of available capital to use in buying assets.
+
+    This number is used to determine how much fiat currency will be used to purchase assets, and the cost of any buy
+    order may never exceed this sum.
+    
+    Reference `starting` to observe how available capital is involved in setting up buy orders.
+    
+    The value of `capital` is not used when determining profit-and-loss, as unused capital is not needed to be reflected
+    in sums of order costs.
+    """
+
+    assets: pd.Series
+    """ Simple total of available assets to use when selling assets.
+
+    Available assets represents a ceiling for amount of asset that can be sold.
+    """
+
+    order_limit: int
+    """ Hard limit on maximum number of incomplete/open orders allowed.
+
+    A hard limit is set to reduce exposure to risk but originally intended to manage available amount of capital
+    used per transaction (this is implemented via `starting`).
+    """
+
+    def __init__(self, threshold: float = None, capital: float = 0, assets: float = 0, order_limit: int = 4, **kwargs):
         super().__init__(**kwargs)
 
         self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
-        """ Store for incomplete/open buy orders.
-        
-        `id` contains the original order ID as found in `orders` and is used when pivoting between the two tables.
-        The `unpaired` method should be used when accessing rows from `orders`. Additionally, during trading,
-        `_check_unpaired` is used to select incomplete orders based off of rate.
-        
-        The `amt` column serves as a ledger to track how much of the asset has been sold (since trade amounts are
-        dynamically calculated taking into account market trends). When assets acquired by an incomplete order are sold,
-        rows are removed from container by `_clean_incomplete()`, but when partially sold, amount of assets sold is
-        deducted unsold amount (denoted in the `amt` column).
-        """
 
         assert threshold > 0
         self.threshold = threshold
-        """ Minimum total profit per trade in dollar amounts.
-        
-        Profit from all sell trades must be equal to or greater than this value.
-        
-        Most likely will be set to less-than 1 when capital is significantly less than exchange rate of one unit of
-        asset. Since marginal changes (<5%) in price are intended to be exploited for gains, this number should be
-        set accordingly dependant on asset price and supplied capital.
-        """
 
         # set starting date for timeseries containers
         if len(self.candles):
@@ -72,36 +101,32 @@ class FinancialsMixin(Strategy, ABC):
 
         self._capital = pd.Series(dtype=float)
         self._capital[start] = capital
-        """ Simple total of available capital to use in buying assets.
-        
-        This number is used to determine how much fiat currency will be used to purchase assets, and the cost of any buy
-        order may never exceed this sum. Reference `starting` to observe how available capital is involved in setting up
-        buy orders. The value of `capital` is not used when determining profit-and-loss, as unused capital is not needed
-        to be reflected in sums of order costs.
-        """
+
         self._assets = pd.Series(dtype=float)
         self._assets[start] = assets
-        """ Simple total of available assets to use when selling assets.
-        
-        Available assets represents a ceiling for amount of asset that can be sold.
-        """
 
-        self.order_count = order_count
-        """ Hard limit on maximum number of incomplete/open orders allowed.
-        
-        A hard limit is set to reduce exposure to risk but originally intended to manage available amount of capital
-        used per transaction (this is implemented via `starting`).
-        """
+        self.order_limit = order_limit
 
     @property
     def _remaining(self) -> int:
-        """ Calculate the number of open/incomplete buy order slots
+        """ The number of open/incomplete orders allowed.
 
-        No more buy orders will be authorized when the returned value becomes 0.
+        When this number is 0, no more buy orders are allowed.
         """
-        return self.order_count - len(self.incomplete)
+        return self.order_limit - len(self.incomplete)
 
     def _timeseries_setter(self, value: Union[float, Tuple['pd.Timestamp', float]], attr: str):
+        """ Append a value to a timeseries container.
+
+        This is used to append data to `capital` and `assets` containers.
+
+        Args:
+            value:
+                Value to append. If a tuple is given, the first element is used as the index and the second as the
+                value. Otherwise, the current time is used as the index.
+            attr:
+                Attribute name of timeseries container to append to.
+        """
         assert hasattr(self, attr)
 
         if hasattr(value, '__iter__'):
@@ -144,8 +169,8 @@ class FinancialsMixin(Strategy, ABC):
         return self._assets
 
     @property
-    def starting(self) -> float:
-        """ Amount of capital to use for a buying assets.
+    def available_capital(self) -> float:
+        """ Amount of capital available for a buying assets.
 
         Value is computed dynamically so that trades grow larger as the amount of available capital increases. A
         fraction of available capital is used instead of spending all available to protect against trading inactivity
@@ -164,7 +189,7 @@ class FinancialsMixin(Strategy, ABC):
             warn(msg)
             logging.warning(msg)
 
-        return self.capital / self.order_count
+        return self.capital / self.order_limit
 
     def pnl(self) -> float:
         # TODO: `unpaired_buys` need to be reflected. Either buy including current price, or excluding and mentioning

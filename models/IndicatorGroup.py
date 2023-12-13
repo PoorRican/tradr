@@ -21,7 +21,7 @@ class IndicatorGroup(object):
     executor: concurrent.futures.Executor
     last_update: Union['pd.Timestamp', None]
 
-    def __init__(self, market: 'MarketAPI', freq: 'str', indicators: List[Indicator],
+    def __init__(self, market: 'MarketAPI', freq: str, indicators: List[Indicator],
                  unison: bool = False, update: bool = True, lookback: int = 1,
                  executor: concurrent.futures.Executor = None, threads: int = 16):
         """ Set up container for `Indicator`
