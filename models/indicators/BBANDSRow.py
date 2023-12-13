@@ -14,7 +14,7 @@ class BBANDSRow(Indicator):
     _source = 'close'
     columns = ('upperband', 'middleband', 'lowerband')
 
-    def __init__(self, *args, threshold: float = 0.25, **kwargs):
+    def __init__(self, *args, threshold: float = 0.75, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.threshold = threshold
