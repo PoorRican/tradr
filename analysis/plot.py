@@ -17,7 +17,7 @@ class Location(IntEnum):
 
 
 class Plotter(object):
-    """ Wrapper that plots `ThreeProngAlt` models """
+    """ Wrapper that plots `HighFreqStrategy` models """
 
     def __init__(self, model: IndicatorStrategy):
         self.model = model

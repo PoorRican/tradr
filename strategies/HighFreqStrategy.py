@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Union, List
 
 from analysis.trend import STRONG_THRESHOLD
-from models import Trade
+from models import Trade, Indicator
 from models.indicators import *
 from strategies.IndicatorStrategy import IndicatorStrategy
 from primitives import Side, TrendDirection, MarketTrend
@@ -11,12 +11,12 @@ from primitives import Side, TrendDirection, MarketTrend
 
 
 
-class ThreeProngAlt(IndicatorStrategy):
-    """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
+class HighFreqStrategy(IndicatorStrategy):
+    """ High-freq strategy
     """
-    __name__ = 'ThreeProngAlt'
+    __name__ = 'HighFreqStrategy'
 
-    def __init__(self, **kwargs):
+    def __init__(self, indicators: List[Indicator], **kwargs):
         """
 
         Args:
@@ -28,8 +28,7 @@ class ThreeProngAlt(IndicatorStrategy):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        _indicators: List = [BBANDSRow(threshold=.85), MARow()]
-        super().__init__(indicators=_indicators, **kwargs)
+        super().__init__(indicators=indicators, **kwargs)
 
     def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:
         """

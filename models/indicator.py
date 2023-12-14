@@ -35,7 +35,7 @@ class Indicator(ABC):
     _function: ClassVar[Callable]
     """ indicator function that is passed a single column of candle data, and ambiguous keyword arguments. """
 
-    _parameters: ClassVar[Dict] = {}
+    _parameters: Dict = {}
     """ Ambiguous parameters for `_function` """
 
     _source: ClassVar[Dict] = 'close'
@@ -49,11 +49,14 @@ class Indicator(ABC):
     computed: pd.DataFrame
     """ Stores output of `_row_decision()` and `_row_strength()` on `graph`. """
 
-    def __init__(self, index: pd.Index = None, lookback: int = 0):
+    def __init__(self, index: pd.Index = None, lookback: int = 0, params: Dict = None):
         self._lookback = lookback
 
         self.graph = self.container(index)
         self.computed = self.container(index, columns=('signal', 'strength'))
+
+        if params:
+            self._parameters.update(params)
 
     @classmethod
     def container(cls, index: Union['pd.Index', Sequence] = None, data: Union[Tuple[pd.Series, ...], pd.Series] = None,
