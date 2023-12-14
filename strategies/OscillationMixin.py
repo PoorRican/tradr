@@ -7,12 +7,12 @@ import pandas as pd
 from misc import TZ
 from models import Indicator, IndicatorGroup, FutureTrade
 from primitives import Signal, ReasonCode
-from strategies.financials import OrderHandler
+from strategies import Strategy
 
 
-class OscillationMixin(OrderHandler, ABC):
+class OscillationMixin(Strategy, ABC):
     def __init__(self, indicators: List[Indicator], freq: str, timeout: str = '6h',
-                 threads: int = 4, lookback: int = 2, **kwargs):
+                 threads: int = 0, lookback: int = 2, **kwargs):
         """
         Args:
             indicators:
@@ -27,7 +27,7 @@ class OscillationMixin(OrderHandler, ABC):
         self.threads = threads
         self.lookback = lookback
         self.timeout: str = timeout
-        self.indicators: IndicatorGroup = IndicatorGroup(self.market, freq, indicators, unison=True)
+        self.indicators: IndicatorGroup = IndicatorGroup(self.market, freq, indicators, unison=True, threads=threads)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Allow for repeated buy orders if timeout has been reached.
@@ -51,7 +51,7 @@ class OscillationMixin(OrderHandler, ABC):
             True if `signal` is not a repeated buy order.
             False if `signal` is `HOLD`.
         """
-        if self.orders.empty:           # first trade must be "buy"
+        if self.order_handler.orders.empty:           # first trade must be "buy"
             # TODO: check if `assets` is 0
             return signal == Signal.BUY
 
@@ -60,15 +60,15 @@ class OscillationMixin(OrderHandler, ABC):
             # prevent more buy orders when there are too many incomplete orders
             if signal == Signal.BUY:
 
-                last_order = self.orders.iloc[-1]
+                last_order = self.order_handler.orders.iloc[-1]
 
-                if self._remaining == 0:
+                if self.order_handler._remaining == 0:
                     return False
                 # Allow repeated buys on timeout
-                elif last_order['side'] == Signal.BUY and self._remaining and timeout:
+                elif last_order['side'] == Signal.BUY and self.order_handler._remaining and timeout:
                     inactive = self._check_timeout(point)
                     if inactive:
-                        self._handle_inactive(last_order)
+                        self.order_handler._handle_inactive(last_order)
                     return inactive
 
             return True
@@ -105,7 +105,7 @@ class OscillationMixin(OrderHandler, ABC):
 
         signal: Signal = self.indicators.signal(point)
         strength: float = self.indicators.strength(signal, point)
-        if signal is Signal.BUY and self._remaining < 1:
+        if signal is Signal.BUY and self.order_handler._remaining < 1:
             pass
         elif self._oscillation(signal, point=point):
             trade = self._propose_trade(signal, point)
@@ -135,7 +135,7 @@ class OscillationMixin(OrderHandler, ABC):
         TODO:
             - Pass trend strength (if trend is bear market) and permit buys if trend is strong enough
         """
-        last = self.orders.iloc[-1].name
+        last = self.order_handler.orders.iloc[-1].name
         last = pd.Timestamp.fromtimestamp(last.timestamp(), tz=TZ)
         if point:
             now = point

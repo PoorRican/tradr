@@ -1,16 +1,14 @@
-from abc import ABC
 import logging
 import pandas as pd
 from typing import NoReturn, Tuple, Union
 from warnings import warn
 
 from misc import TZ
-from models import SuccessfulTrade
+from models import SuccessfulTrade, FailedTrade
 from primitives import Side
-from strategies import Strategy
 
 
-class OrderHandler(Strategy, ABC):
+class OrderHandler(object):
     """ Mixin for Strategy that encapsulates management of capital and assets held.
 
     Functionality mainly involves management of total amount of capital acquired/available and loose orchestration
@@ -36,6 +34,25 @@ class OrderHandler(Strategy, ABC):
     TODO:
         -   Convert `capital` and `assets` to time-series that tracks balance over time, and why values change
             (eg: user-initiated deposit, trade id)
+    """
+    orders: pd.DataFrame
+    """ History of attempt orders performed by this strategy. Timestamps of extrema are used as indexes.
+    
+    Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
+    is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
+    both rigidity and convenience.
+    
+    Notes:
+        Columns and dtypes should be identical to those of `SuccessfulTrade`
+    """
+
+    failed_orders: pd.DataFrame
+    """ History of orders that were not accepted by the market.
+
+    Could be used to:
+        - Debug
+        - Test performance of computational trading methods (ie: `_calc_rate`, and related)
+        - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
     """
 
     incomplete: pd.DataFrame
@@ -72,7 +89,7 @@ class OrderHandler(Strategy, ABC):
     in sums of order costs.
     """
 
-    assets: pd.Series
+    _assets: pd.Series
     """ Simple total of available assets to use when selling assets.
 
     Available assets represents a ceiling for amount of asset that can be sold.
@@ -85,17 +102,17 @@ class OrderHandler(Strategy, ABC):
     used per transaction (this is implemented via `starting`).
     """
 
-    def __init__(self, threshold: float = None, capital: float = 0, assets: float = 0, order_limit: int = 4, **kwargs):
-        super().__init__(**kwargs)
-
+    def __init__(self, threshold: float, capital: float = 0, assets: float = 0, order_limit: int = 4, candles: pd.DataFrame = None):
         self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
+        self.orders = SuccessfulTrade.container()
+        self.failed_orders = FailedTrade.container()
 
         assert threshold > 0
         self.threshold = threshold
 
         # set starting date for timeseries containers
-        if len(self.candles):
-            start = self.candles.index[0]
+        if candles and len(candles):
+            start = candles.index[0]
         else:
             start = pd.Timestamp.now(tz=TZ)
 
@@ -292,15 +309,6 @@ class OrderHandler(Strategy, ABC):
         highest = max(unpaired['rate'])
         return unpaired['amt'].sum() * highest
 
-    def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade) -> NoReturn:
-        """ Handle mundane accounting functions for when a sale completes.
-
-        After a sale, sold assets are dropped or deducted from `incomplete` container, and then
-        `capital` and `assets` values are adjusted.
-        """
-        self._clean_incomplete(trade)
-        self._adjust_capital(trade, extrema)
-        self._adjust_assets(trade, extrema)
 
     def _handle_inactive(self, row: pd.Series) -> NoReturn:
         """ Add incomplete order to `incomplete` container.

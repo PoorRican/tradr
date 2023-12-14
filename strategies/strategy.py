@@ -1,7 +1,7 @@
 import pandas as pd
 from os import path
 from datetime import datetime
-from typing import Union, List, Dict
+from typing import Union
 from abc import ABC, abstractmethod
 import logging
 from warnings import warn
@@ -9,6 +9,7 @@ from warnings import warn
 from core.MarketAPI import MarketAPI
 from models import SuccessfulTrade, add_to_df, truncate, FailedTrade, FutureTrade, Trade
 from primitives import Side, StoredObject, Signal
+from strategies.OrderHandler import OrderHandler
 
 
 class Strategy(StoredObject, ABC):
@@ -38,25 +39,7 @@ class Strategy(StoredObject, ABC):
     __name__: str = 'base'
     """ Name of strategy. """
 
-    orders: pd.DataFrame
-    """ History of attempt orders performed by this strategy. Timestamps of extrema are used as indexes.
-    
-    Timestamps shall be sorted in an ascending consecutive series. This is so that selecting and grouping by index
-    is not impeded by unsorted indexes. Insertion shall only be accomplished by `models.trades._add_to_df()` for
-    both rigidity and convenience.
-    
-    Notes:
-        Columns and dtypes should be identical to those of `SuccessfulTrade`
-    """
-
-    failed_orders: pd.DataFrame
-    """ History of orders that were not accepted by the market.
-
-    Could be used to:
-        - Debug
-        - Test performance of computational trading methods (ie: `_calc_rate`, and related)
-        - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
-    """
+    order_handler: OrderHandler
 
     market: MarketAPI
     """ Market client to use for market data and trading.
@@ -83,16 +66,38 @@ class Strategy(StoredObject, ABC):
                 trading decisions are evaluated) will be derived from this frequency.
         """
         super().__init__(**kwargs)
-        self.orders = SuccessfulTrade.container()
-
-        self.failed_orders = FailedTrade.container()
 
         self.market = market
         self.freq = freq
 
+    def build_order_handler(self, threshold: float, capital: float = 0, assets: float = 0, order_limit: int = 4):
+        """ Build order handler for strategy.
+        """
+        self.order_handler = OrderHandler(threshold, capital, assets, order_limit, candles=self.candles)
+
     @property
     def candles(self):
         return self.market.candles(self.freq)
+
+    @property
+    def orders(self) -> pd.DataFrame:
+        return self.order_handler.orders
+
+    @orders.setter
+    def orders(self, value: pd.DataFrame):
+        self.order_handler.orders = value
+
+    @property
+    def failed_orders(self) -> pd.DataFrame:
+        return self.order_handler.failed_orders
+
+    @failed_orders.setter
+    def failed_orders(self, value: pd.DataFrame):
+        self.order_handler.failed_orders = value
+
+    @property
+    def unpaired(self) -> pd.DataFrame:
+        return self.order_handler.unpaired()
 
     def _calc_profit(self, trade: Trade, last_trade: Union['pd.Series', 'pd.DataFrame'] = None) -> float:
         """ Calculates profit of a sale.
@@ -101,14 +106,20 @@ class Strategy(StoredObject, ABC):
         a higher-level method such as `is_profitable()`.
         """
         if last_trade is None:
-            last_trade = self.orders.iloc[-1]
+            last_trade = self.order_handler.orders.iloc[-1]
 
         gain = truncate(trade.cost, 2) - truncate(last_trade['cost'], 2)
         return gain - self.market.fee
 
-    def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade):
-        """ Post sale processing of trade before adding to local container. """
-        pass
+    def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade) -> None:
+        """ Handle mundane accounting functions for when a sale completes.
+
+        After a sale, sold assets are dropped or deducted from `incomplete` container, and then
+        `capital` and `assets` values are adjusted.
+        """
+        self.order_handler._clean_incomplete(trade)
+        self.order_handler._adjust_capital(trade, extrema)
+        self.order_handler._adjust_assets(trade, extrema)
 
     def _add_order(self, trade: FutureTrade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Create and send order to market, then store in history.
@@ -205,7 +216,7 @@ class Strategy(StoredObject, ABC):
         Returns:
             Rate to use when buying
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def _calc_amount(self, extrema: pd.Timestamp, side: Side, rate: float) -> float:
@@ -224,7 +235,7 @@ class Strategy(StoredObject, ABC):
         Returns:
             Amount of asset to trade
         """
-        pass
+        raise NotImplementedError
 
     def _buy(self, trade: FutureTrade) -> bool:
         """ Attempt to execute buy order.
@@ -292,7 +303,7 @@ class Strategy(StoredObject, ABC):
         Returns:
             Determination whether trade should be executed is binary. It is either profitable or not.
         """
-        pass
+        raise NotImplementedError
 
     def calculate_all(self):
         """ Perform all available calculations for given data at runtime.
@@ -326,7 +337,7 @@ class Strategy(StoredObject, ABC):
 
             Otherwise, if no valid extrema is found, `False` is returned.
         """
-        pass
+        raise NotImplementedError
 
     @property
     def _instance_dir(self) -> str:

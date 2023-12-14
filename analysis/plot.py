@@ -89,10 +89,10 @@ class Plotter(object):
             orders = self.model.orders[start:stop]
         else:
             candles = self.candles
-            assets = self.model.assets_ts
-            capital = self.model.capital_ts
+            assets = self.model.order_handler.assets_ts
+            capital = self.model.order_handler.capital_ts
             endpoints = {}
-            orders = self.model.orders
+            orders = self.model.order_handler.orders
 
         pri = self.subplots[Location.PRIMARY]
         pri.plot(candles.index, candles['close'], color=to_rgba('blue', 0.8))

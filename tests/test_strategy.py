@@ -13,6 +13,7 @@ class BaseStrategyTestCase(unittest.TestCase):
     def setUp(self):
         self.market = create_autospec(Market, instance=True)
         self.strategy = Strategy(self.market, freq='')
+        self.strategy.build_order_handler(threshold=0.1)
 
     @staticmethod
     def prevent_call(obj, func: str):
@@ -74,6 +75,21 @@ class StrategyAddOrderTests(BaseStrategyTestCase):
 
             self.strategy._post_sale.assert_called_once()
             _mock_add_to_df.assert_called_once_with(self.strategy, 'orders', extrema, result)
+
+    def test_post_sale(self):
+        self.strategy.order_handler = MagicMock()
+        self.strategy.order_handler._clean_incomplete = MagicMock()
+        self.strategy.order_handler._adjust_capital = MagicMock()
+        self.strategy.order_handler._adjust_assets = MagicMock()
+
+        trade = SuccessfulTrade(0, 0, Side.BUY, 0)
+        now = pd.Timestamp.now()
+        self.strategy._post_sale(now, trade)
+
+        self.strategy.order_handler._clean_incomplete.assert_called_with(trade)
+        self.strategy.order_handler._adjust_assets.assert_called_with(trade, now)
+        self.strategy.order_handler._adjust_capital.assert_called_with(trade, now)
+
 
     def test_add_failed_order(self):
         extrema = pd.Timestamp.now()
