@@ -5,13 +5,13 @@ from typing import Union, List
 from analysis.trend import STRONG_THRESHOLD
 from models import Trade
 from models.indicators import *
-from strategies.OscillationMixin import OscillationMixin
+from strategies.IndicatorStrategy import IndicatorStrategy
 from primitives import Side, TrendDirection, MarketTrend
 
 
 
 
-class ThreeProngAlt(OscillationMixin):
+class ThreeProngAlt(IndicatorStrategy):
     """ Alternating high-freq strategy that bases decisions on 3 indicators: StochRSI, BB, MACD.
     """
     __name__ = 'ThreeProngAlt'

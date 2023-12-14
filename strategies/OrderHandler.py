@@ -111,7 +111,7 @@ class OrderHandler(object):
         self.threshold = threshold
 
         # set starting date for timeseries containers
-        if candles and len(candles):
+        if candles is not None and len(candles):
             start = candles.index[0]
         else:
             start = pd.Timestamp.now(tz=TZ)
@@ -313,8 +313,8 @@ class OrderHandler(object):
     def handle_inactive(self, row: pd.Series) -> NoReturn:
         """ Add unsold order to `unsold` container.
 
-        Inactivity is defined by `OscillationMixin.timeout` and is checked during
-        `OscillationMixin._oscillation()`.
+        Inactivity is defined by `IndicatorStrategy.timeout` and is checked during
+        `IndicatorStrategy._oscillation()`.
 
         Args:
             row:

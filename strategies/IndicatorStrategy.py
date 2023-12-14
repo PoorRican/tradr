@@ -4,14 +4,15 @@ from typing import Union, List
 
 import pandas as pd
 
+from core import MarketAPI
 from misc import TZ
 from models import Indicator, IndicatorGroup, FutureTrade
 from primitives import Signal, ReasonCode
 from strategies import Strategy
 
 
-class OscillationMixin(Strategy, ABC):
-    def __init__(self, indicators: List[Indicator], freq: str, timeout: str = '6h',
+class IndicatorStrategy(Strategy, ABC):
+    def __init__(self, market: MarketAPI, freq: str, indicators: List[Indicator], timeout: str = '6h',
                  threads: int = 0, lookback: int = 2, **kwargs):
         """
         Args:
@@ -22,14 +23,14 @@ class OscillationMixin(Strategy, ABC):
             **kwargs:
                 Keyword Args passed to `OrderHandler.__init__()`
         """
-        super().__init__(freq=freq, **kwargs)
+        super().__init__(market=market, freq=freq, **kwargs)
 
         self.threads = threads
         self.lookback = lookback
         self.timeout: str = timeout
         self.indicators: IndicatorGroup = IndicatorGroup(self.market, freq, indicators, unison=True, threads=threads)
 
-    def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
+    def _allow_signal(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Allow for repeated buy orders if timeout has been reached.
 
         Multiple sell orders are always allowed.
@@ -107,7 +108,7 @@ class OscillationMixin(Strategy, ABC):
         strength: float = self.indicators.strength(signal, point)
         if signal is Signal.BUY and self.order_handler.remaining_buy_orders < 1:
             pass
-        elif self._oscillation(signal, point=point):
+        elif self._allow_signal(signal, point=point):
             trade = self._propose_trade(signal, point)
             _profitable: bool = self._is_profitable(trade, point, strength)
             trade = FutureTrade.factory(trade, _profitable, point)

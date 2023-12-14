@@ -11,7 +11,7 @@ from typing import Union
 import logging
 
 from misc import TZ
-from strategies.OscillationMixin import OscillationMixin
+from strategies.IndicatorStrategy import IndicatorStrategy
 
 
 class Simulation(object):
@@ -25,9 +25,9 @@ class Simulation(object):
     """
 
     current_progress: int
-    strategy: OscillationMixin
+    strategy: IndicatorStrategy
 
-    def __init__(self, strategy: OscillationMixin):
+    def __init__(self, strategy: IndicatorStrategy):
         self.current_progress = 0
         self.strategy = strategy
 
@@ -88,11 +88,7 @@ class Simulation(object):
 
             # TODO: enable multithreading
             self.print_progress(i)
-            try:
-                self.strategy.process(point)
-            except KeyError:
-                # for debugging
-                continue
+            self.strategy.process(point)
 
         msg = "Finished processing data"
         logging.info(msg)

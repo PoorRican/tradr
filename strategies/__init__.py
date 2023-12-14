@@ -10,6 +10,6 @@
 """
 from strategies.strategy import Strategy
 from strategies.OrderHandler import OrderHandler
-from strategies.OscillationMixin import OscillationMixin
+from strategies.IndicatorStrategy import IndicatorStrategy
 from strategies.StaticAlternatingStrategy import StaticAlternatingStrategy
 from strategies.ThreeProngAlt import ThreeProngAlt
