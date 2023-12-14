@@ -2,14 +2,14 @@ import pandas as pd
 import unittest
 from unittest.mock import patch, MagicMock
 
-from strategies.financials import FinancialsMixin
+from strategies.financials import OrderHandler
 from models import SuccessfulTrade
 from primitives import Side
 from strategies.strategy import Strategy
 
 
 class BaseFinancialsMixinTestCase(unittest.TestCase):
-    @patch("strategies.FinancialsMixin.__abstractmethods__", set())
+    @patch("strategies.OrderHandler.__abstractmethods__", set())
     def setUp(self) -> None:
         with patch('core.market.Market') as cls:
             self.market = cls()
@@ -18,8 +18,8 @@ class BaseFinancialsMixinTestCase(unittest.TestCase):
         self.threshold = .1
         self.assets = 1
         self.order_count = 4
-        self.strategy = FinancialsMixin(market=self.market, threshold=self.threshold, freq='',
-                                        capital=self.capital, assets=self.assets, order_limit=self.order_count)
+        self.strategy = OrderHandler(market=self.market, threshold=self.threshold, freq='',
+                                     capital=self.capital, assets=self.assets, order_limit=self.order_count)
 
 
 class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):

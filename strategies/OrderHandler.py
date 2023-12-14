@@ -10,7 +10,7 @@ from primitives import Side
 from strategies import Strategy
 
 
-class FinancialsMixin(Strategy, ABC):
+class OrderHandler(Strategy, ABC):
     """ Mixin for Strategy that encapsulates management of capital and assets held.
 
     Functionality mainly involves management of total amount of capital acquired/available and loose orchestration

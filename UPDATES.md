@@ -24,9 +24,10 @@
 
 # Strategies
 
-- [ ] `FinancialsMixin` should be used as a standalone object instead of a mixin. Should be renamed to `OrderHandler`.
+- [ ] `OrderHandler` should be used as a standalone object instead of a mixin. Should be renamed to `OrderHandler`.
 - [X] unpaired orders are not being accounted for. This affects pnl and should be of upmost priority.
 - [ ] Implement builder methods for building strategies
+- [ ] Verify functionality of `lookback`. It should follow the same logic as `unison`. If `unison` then `lookback` should look for repeated signals. If not `usison`, then `lookback` should look for similar signals.
 
 # Analysis
 

@@ -7,10 +7,10 @@ import pandas as pd
 from misc import TZ
 from models import Indicator, IndicatorGroup, FutureTrade
 from primitives import Signal, ReasonCode
-from strategies.financials import FinancialsMixin
+from strategies.financials import OrderHandler
 
 
-class OscillationMixin(FinancialsMixin, ABC):
+class OscillationMixin(OrderHandler, ABC):
     def __init__(self, indicators: List[Indicator], freq: str, timeout: str = '6h',
                  threads: int = 4, lookback: int = 2, **kwargs):
         """
@@ -20,7 +20,7 @@ class OscillationMixin(FinancialsMixin, ABC):
             timeout:
                 Timeout frequency for sequential buy orders. Used by `_oscillation()` frequency.
             **kwargs:
-                Keyword Args passed to `FinancialsMixin.__init__()`
+                Keyword Args passed to `OrderHandler.__init__()`
         """
         super().__init__(freq=freq, **kwargs)
 
@@ -35,7 +35,7 @@ class OscillationMixin(FinancialsMixin, ABC):
         Multiple sell orders are always allowed.
 
         If timeout has been reached, then multiple buy orders are allowed. Multiple buy orders are tracked by
-        `FinancialsMixin.incomplete` and are limited by `order_limit`.
+        `OrderHandler.incomplete` and are limited by `order_limit`.
 
         Args:
             signal:
