@@ -21,7 +21,7 @@ class IndicatorGroup(object):
     executor: concurrent.futures.Executor
     last_update: Union['pd.Timestamp', None]
 
-    def __init__(self, market: 'MarketAPI', freq: 'str', indicators: List[Indicator],
+    def __init__(self, market: 'MarketAPI', freq: str, indicators: List[Indicator],
                  unison: bool = False, update: bool = True, lookback: int = 1,
                  executor: concurrent.futures.Executor = None, threads: int = 16):
         """ Set up container for `Indicator`
@@ -121,11 +121,11 @@ class IndicatorGroup(object):
         shouldn't be any redundant access to specific frequency candle data outside of this functor.
         """
         self.last_update = self.candles.index[-1]
-        self._generate_indicator_graph(self.candles)
-        self._compute_signals(self.candles)
+        self._generate_indicator_graphs(self.candles)
+        self._compute_decisions(self.candles)
 
-    def _compute_signals(self, data: pd.DataFrame, buffer: bool = False,
-                         executor: concurrent.futures.Executor = None) -> NoReturn:
+    def _compute_decisions(self, data: pd.DataFrame, buffer: bool = False,
+                           executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Compute signals from indicator graph data
 
         Used to update `self.computed` which is dedicated to store all indicator data and should only be updated
@@ -155,18 +155,18 @@ class IndicatorGroup(object):
         if self.threads:
 
             if executor is not None:
-                self.func_threads('compute', executor=executor, candles=_buffer)
+                self.func_threads('compute_decision', executor=executor, candles=_buffer)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
                 # Start the load operations and mark each future with its URL
-                fs = self.func_threads('compute', executor=executor, candles=_buffer)
+                fs = self.func_threads('compute_decision', executor=executor, candles=_buffer)
                 concurrent.futures.wait(fs)
                 # result would be accessible by `future.result for future in ...`
         else:
-            [i.compute(_buffer) for i in self.indicators]
+            [i.compute_decision(_buffer) for i in self.indicators]
 
-    def _generate_indicator_graph(self, data: pd.DataFrame, buffer: bool = False,
-                                  executor: concurrent.futures.Executor = None) -> NoReturn:
+    def _generate_indicator_graphs(self, data: pd.DataFrame, buffer: bool = False,
+                                   executor: concurrent.futures.Executor = None) -> NoReturn:
         """ Generate indicator data for given candle data.
 
         This is used to update `self.graph` for each indicator.
@@ -189,15 +189,15 @@ class IndicatorGroup(object):
         if self.threads:
 
             if executor is not None:
-                self.func_threads('process', executor=executor, candles=_buffer)
+                self.func_threads('generate_indicator_graph', executor=executor, candles=_buffer)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
                 # Start the load operations and mark each future with its URL
-                fs = self.func_threads('process', executor=executor, candles=_buffer)
+                fs = self.func_threads('generate_indicator_graph', executor=executor, candles=_buffer)
                 concurrent.futures.wait(fs)
                 # result would be accessible by `future.result for future in ...`
         else:
-            [i.process(_buffer) for i in self.indicators]
+            [i.generate_indicator_graph(_buffer) for i in self.indicators]
 
     def func_threads(self, func: str, *args, executor: concurrent.futures.Executor = None, **kwargs) \
             -> List[concurrent.futures.Future]:
@@ -229,7 +229,7 @@ class IndicatorGroup(object):
         unique = len(signals.unique())
         if self.unison and unique == 1:
             pass
-        elif not self.unison and unique <= len(self.indicators) - 1 and \
+        elif not self.unison and unique <= len(self.indicators) and \
                 not self._conflicting_signals(signals):
             pass
         else:

@@ -1,5 +1,6 @@
 from math import isnan, nan
 import pandas as pd
+from matplotlib.colors import to_rgba
 from talib import BBANDS
 from typing import Union, Tuple
 
@@ -14,7 +15,7 @@ class BBANDSRow(Indicator):
     _source = 'close'
     columns = ('upperband', 'middleband', 'lowerband')
 
-    def __init__(self, *args, threshold: float = 0.25, **kwargs):
+    def __init__(self, *args, threshold: float = 0.75, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.threshold = threshold
@@ -109,4 +110,4 @@ class BBANDSRow(Indicator):
     def plot(self, *args, **kwargs):
         primary_idx = 0
         # always attempt to add to primary sub-plot
-        return super().plot(*args, **kwargs, index=primary_idx)
+        return super().plot(*args, **kwargs, color=to_rgba('purple', alpha=.25))

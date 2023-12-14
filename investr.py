@@ -1,4 +1,5 @@
-from core import market
+import pandas as pd
+from core import market, Market
 from strategies.strategy import Strategy
 
 
@@ -13,16 +14,16 @@ class Investr(object):
 
     def run(self):
         self.market.update()
-        extrema = self.strategy.process(self.market.data)
+        self.strategy.process()
 
-    def orders(self):
-        return self.strategy.orders
+    def orders(self) -> pd.DataFrame:
+        return self.strategy.order_handler.orders
 
-    def amount(self):
-        return self.strategy.total_amt()
+    def amount(self) -> float:
+        return self.strategy.order_handler.assets
 
-    def fiat(self):
-        return self.strategy.total_fiat()
+    def fiat(self) -> float:
+        return self.strategy.order_handler.capital
 
     def save(self):
         self.market.save()

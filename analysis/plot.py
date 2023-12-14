@@ -3,12 +3,11 @@ from matplotlib.colors import to_rgba
 from matplotlib.pyplot import Figure
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import Mapping, Sequence, Union, NoReturn
+from typing import Mapping, Sequence, Union, NoReturn, Tuple
 
 from misc import TZ
 from models import IndicatorGroup
-from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
-from strategies import ThreeProngAlt
+from strategies import IndicatorStrategy
 
 
 class Location(IntEnum):
@@ -17,18 +16,15 @@ class Location(IntEnum):
     ASSETS = 1
 
 
-# TODO: create parent object that serves as base wrapper for ThreeProngAlt models
 class Plotter(object):
-    """ Wrapper that plots `ThreeProngAlt` models """
-    rows = 4
+    """ Wrapper that plots `HighFreqStrategy` models """
 
-    def __init__(self, model: ThreeProngAlt):
+    def __init__(self, model: IndicatorStrategy):
         self.model = model
-        self.subplots: Sequence[Figure] = self._init_figure(self.rows)
 
     @classmethod
     def _init_figure(cls, rows: int) -> Sequence[Figure]:
-        fig, ax = plt.subplots(nrows=rows, figsize=[16, 9*4], dpi=250)
+        fig, ax = plt.subplots(nrows=rows, figsize=[16, 9*4], dpi=350)
         return ax
 
     @property
@@ -39,14 +35,11 @@ class Plotter(object):
     def indicators(self):
         return self.model.indicators
 
-    def _plot_indicators(self, endpoints: Mapping[str, 'pd.Timestamp']):
-        macd = 2
-        stoch = 3
+    def _plot_candle_indicators(self, figure: Figure, endpoints: Mapping[str, 'pd.Timestamp']):
         container: IndicatorGroup = self.indicators
 
-        container[BBANDSRow].plot(self.subplots, **endpoints, render=False)
-        container[MACDRow].plot(self.subplots, macd, **endpoints, render=False)
-        container[STOCHRSIRow].plot(self.subplots, stoch, **endpoints, render=False)
+        for indicator in container:
+            indicator.plot(figure, **endpoints, render=False)
 
     def graph(self, ):
         """ Plot graph of market price, """
@@ -55,8 +48,27 @@ class Plotter(object):
     def performance(self):
         pass
 
-    def plot(self, start: Union['pd.Timestamp', str] = None, width: str = '1d',
-             render: bool = True, render_failed: bool = False) -> NoReturn:
+    @staticmethod
+    def _determine_start_stop(start: Union['pd.Timestamp', str] = None, width: str = '1d') -> Tuple[pd.Timestamp, pd.Timestamp]:
+        """ Determine start and stop points for plotting
+
+        Args:
+            start: center point of window
+            width: width of window
+        """
+        if type(start) is str:
+            point = pd.Timestamp(start, tz=TZ)
+        else:
+            point = start
+
+        delta = pd.Timedelta(width) / 2
+
+        start = point - delta
+        stop = point + delta
+
+        return start, stop
+
+    def plot(self, start: Union['pd.Timestamp', str] = None, width: str = '1d', render_failed: bool = False) -> None:
         """ Plot trade enter and exit points as an overlay to market data.
 
         Primary method of assessing `Strategy` performance is done visually by observing enter and exit points
@@ -67,60 +79,53 @@ class Plotter(object):
                 Center of window when observing a specific point in time.
             width:
                 Width of window for observing windows in time.
-            render:
-                This is a stub that will be used in the future for a more OO approach to plotting data from
-                distinct classes.
             render_failed:
                 Optional flag to render failed orders on chart to reduce obfuscation from too many trades.
                 Typically, rendering of failed trades should be done when focusing on a window of time
                 and is not necessary for judging strategy performance.
-
-                Argument is passed to `_render_decisions()`.
         """
         if start:
-            if type(start) is str:
-                point = pd.Timestamp(start, tz=TZ)
-            else:
-                point = start
-            delta = pd.Timedelta(width)
-            start = point - delta
-            stop = point + delta
+            start, stop = self._determine_start_stop(start, width)
+
             candles = self.candles.loc[start:stop]
-            assets = self.model.assets_ts.loc[start:stop]
-            capital = self.model.capital_ts.loc[start:stop]
-            endpoints = {'start': start, 'stop': stop}  # dict to be passed as kwargs
+            assets = self.model.order_handler.assets_ts.loc[start:stop]
+            capital = self.model.order_handler.capital_ts.loc[start:stop]
+            endpoints = {'start': start, 'stop': stop}
             orders = self.model.orders[start:stop]
         else:
             candles = self.candles
-            assets = self.model.assets_ts
-            capital = self.model.capital_ts
+            assets = self.model.order_handler.assets_ts
+            capital = self.model.order_handler.capital_ts
             endpoints = {}
-            orders = self.model.orders
+            orders = self.model.order_handler.orders
 
-        pri = self.subplots[Location.PRIMARY]
+        plots = self._init_figure(rows=2)
+
+        pri = plots[Location.PRIMARY]
+
+        self._plot_candle_indicators(pri, endpoints)
         pri.plot(candles.index, candles['close'], color=to_rgba('blue', 0.8))
+        self._plot_decisions(pri, orders, render_failed)
 
-        self._plot_decisions(orders, render_failed)
-        self._plot_money(index=candles.index, assets=assets, capital=capital)
-        self._plot_indicators(endpoints)
+        sec = plots[Location.ASSETS]
+        self._plot_money(sec, index=candles.index, assets=assets, capital=capital)
 
-        if render:
-            plt.show()
+        plt.show()
 
-    def _plot_money(self, index: pd.Index, assets: pd.Series, capital: pd.Series) -> NoReturn:
+    @staticmethod
+    def _plot_money(figure: Figure, index: pd.Index, assets: pd.Series, capital: pd.Series) -> None:
         """ Plot acquired capital and assets """
         if assets.empty:
             return
 
-        sec = self.subplots[1]
         _last = assets.iloc[-1]
         _assets: pd.Series = assets.copy()
         _assets = _assets.reindex(index, fill_value=None)
         _assets.iloc[-1] = _last
         _assets = _assets.interpolate()
-        sec.plot(_assets.index, _assets, color="purple")
+        figure.plot(_assets.index, _assets, color="purple")
 
-        sec2 = sec.twinx()
+        sec2 = figure.twinx()
         _last = capital.iloc[-1]
         _capital = capital.copy()
         _capital = _capital.reindex(index, fill_value=None)
@@ -128,11 +133,10 @@ class Plotter(object):
         _capital = _capital.interpolate()
         sec2.plot(_capital.index, _capital.values, color="green")
 
-    def _plot_decisions(self, orders: pd.DataFrame, render_failed: bool = False) -> NoReturn:
+    def _plot_decisions(self, figure: Figure, orders: pd.DataFrame, render_failed: bool = False) -> None:
+        """ Plot trade enter and exit locations. """
         if orders.empty:
             return
-        """ Plot trade enter and exit locations. """
-        figure = self.subplots[Location.PRIMARY]
         size = 10
         scalar = 4
 

@@ -11,7 +11,7 @@ from typing import Union
 import logging
 
 from misc import TZ
-from strategies.OscillationMixin import OscillationMixin
+from strategies.IndicatorStrategy import IndicatorStrategy
 
 
 class Simulation(object):
@@ -23,8 +23,13 @@ class Simulation(object):
         TODO:
             - Implement a way to store and access historical values.
     """
-    def __init__(self, strategy: OscillationMixin):
-        self.strategy: OscillationMixin = strategy
+
+    current_progress: int
+    strategy: IndicatorStrategy
+
+    def __init__(self, strategy: IndicatorStrategy):
+        self.current_progress = 0
+        self.strategy = strategy
 
     @property
     def market(self):
@@ -39,10 +44,11 @@ class Simulation(object):
                 completion every 10%.
         """
         progress = self._progress(current)
-        if progress > 0 and progress % interval == 0:
+        if progress > 0 and progress % interval == 0 and progress > self.current_progress:
+            self.current_progress = progress
             print("%d completed" % progress)
 
-    def _progress(self, current: int):
+    def _progress(self, current: int) -> int:
         """ Show percentage complete as an integer """
         total = len(self.strategy.candles)
         return (100 * current) // total

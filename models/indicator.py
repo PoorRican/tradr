@@ -35,7 +35,7 @@ class Indicator(ABC):
     _function: ClassVar[Callable]
     """ indicator function that is passed a single column of candle data, and ambiguous keyword arguments. """
 
-    _parameters: ClassVar[Dict] = {}
+    _parameters: Dict = {}
     """ Ambiguous parameters for `_function` """
 
     _source: ClassVar[Dict] = 'close'
@@ -49,14 +49,17 @@ class Indicator(ABC):
     computed: pd.DataFrame
     """ Stores output of `_row_decision()` and `_row_strength()` on `graph`. """
 
-    def __init__(self, index: pd.Index = None, lookback: int = 0):
+    def __init__(self, index: pd.Index = None, lookback: int = 0, params: Dict = None):
         self._lookback = lookback
 
         self.graph = self.container(index)
         self.computed = self.container(index, columns=('signal', 'strength'))
 
+        if params:
+            self._parameters.update(params)
+
     @classmethod
-    def container(cls, index: Union['pd.Index', Sequence] = None, data: Sequence = None,
+    def container(cls, index: Union['pd.Index', Sequence] = None, data: Union[Tuple[pd.Series, ...], pd.Series] = None,
                   columns: Sequence[str] = None) -> pd.DataFrame:
         """ A helper for creating a DataFrame
 
@@ -68,8 +71,11 @@ class Indicator(ABC):
             columns:
                 Columns to use for DataFrame. If `None`, `cls.columns` is used.
         """
-        if data:
-            _data = [i.values.T for i in data]
+        if data is not None:
+            if isinstance(data, pd.Series):
+                _data = (data,)
+            else:
+                _data = [i.values.T for i in data]
             _dict = {}
             for name, _col in zip(cls.columns, _data):
                 _dict[name] = _col
@@ -80,7 +86,7 @@ class Indicator(ABC):
 
         return pd.DataFrame(index=index, columns=list(columns), dtype=float)
 
-    def process(self, candles: pd.DataFrame, **kwargs) -> NoReturn:
+    def generate_indicator_graph(self, candles: pd.DataFrame, **kwargs) -> NoReturn:
         """ Processes incoming `data` and populates `graph`.
 
         This function is used for computing indicator functions with existing or new data.
@@ -97,20 +103,12 @@ class Indicator(ABC):
 
         """
         assert not candles.empty
-        # TODO: make async
 
-        # new or empty rows get updated
-        _index = list(candles.index.values)
-        _index.extend(list(self.graph.values))
-        if type(candles.index) == pd.DatetimeIndex:
-            _index = pd.DatetimeIndex(_index)
-        else:
-            _index = pd.Index(_index)
-
-        if len(_index.notna()) != len(_index):
+        # assert that index contains no gaps not empty
+        if len(self.graph.index.notna()) != len(self.graph.index):
             raise ValueError('Resulting index contains a date-gap')
 
-        _not_empty = self.graph.notna()
+        # _not_empty = self.graph.notna()
         # updates = _not_empty.index.isin(_index)
 
         # setup and run indicator function
@@ -124,7 +122,7 @@ class Indicator(ABC):
         # self.graph = pd.concat([self.graph, buffer.loc[updates.values]])
         self.graph = buffer
 
-    def compute(self, candles: pd.DataFrame) -> NoReturn:
+    def compute_decision(self, candles: pd.DataFrame) -> NoReturn:
         """ Compute `Signal` and strength for each row in `graph`.
 
         This function is used for computing `Signal` and strength for each row in `graph`.
@@ -275,7 +273,7 @@ class Indicator(ABC):
         """
         pass
 
-    def plot(self, figure: Sequence[Figure], index: int, reindex: pd.Index = None, color=to_rgba('cyan', .1),
+    def plot(self, figure: Figure, reindex: pd.Index = None, color=to_rgba('cyan', .7),
              start: pd.Timestamp = None, stop: pd.Timestamp = None,
              render: bool = True) -> Union[NoReturn, 'Figure']:
         """ Plot onto given figure
@@ -283,8 +281,6 @@ class Indicator(ABC):
         Args:
             figure:
                 Figure to plot onto.
-            index:
-                Index of subplot to plot onto.
             reindex:
                 Index to reindex graph with. If `None`, `graph` is plotted as-is.
             color:
@@ -311,7 +307,7 @@ class Indicator(ABC):
             else:
                 _index = col.index
                 _values = col.values
-            figure[index].plot(_index, _values, color=color)
+            figure.plot(_index, _values, color=color)
 
         if not render:
             return figure

@@ -20,7 +20,7 @@ class TestingIndicatorTestCase(unittest.TestCase):
         self.assertTrue(self.computed.equals(self.obj.computed))
 
     def test_compute(self):
-        self.obj.compute(self.graph)
+        self.obj.compute_decision(self.graph)
         self.assertTrue(self.computed.equals(self.obj.computed))
 
     def test_signal(self):

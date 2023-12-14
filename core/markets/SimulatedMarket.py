@@ -7,15 +7,17 @@ from models import Trade, SuccessfulTrade
 
 
 class SimulatedMarket(Market):
-    """
-    Mock class of `Market`.
+    """ A simulated market that uses the data from a real market.
+
     Has flat fee, always accepts an order.
+
     Todo:
         - Only accept trade 50% of the time. This adds realism to simulation.
     """
 
     def __init__(self, model: MarketAPI = None):
-        super().__init__()
+        self.asset_pairs = model.asset_pairs
+        super().__init__(model.symbol)
 
         self.model = model
 
