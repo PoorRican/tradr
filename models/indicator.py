@@ -56,7 +56,7 @@ class Indicator(ABC):
         self.computed = self.container(index, columns=('signal', 'strength'))
 
     @classmethod
-    def container(cls, index: Union['pd.Index', Sequence] = None, data: Sequence = None,
+    def container(cls, index: Union['pd.Index', Sequence] = None, data: Union[Tuple[pd.Series, ...], pd.Series] = None,
                   columns: Sequence[str] = None) -> pd.DataFrame:
         """ A helper for creating a DataFrame
 
@@ -68,8 +68,11 @@ class Indicator(ABC):
             columns:
                 Columns to use for DataFrame. If `None`, `cls.columns` is used.
         """
-        if data:
-            _data = [i.values.T for i in data]
+        if data is not None:
+            if isinstance(data, pd.Series):
+                _data = (data,)
+            else:
+                _data = [i.values.T for i in data]
             _dict = {}
             for name, _col in zip(cls.columns, _data):
                 _dict[name] = _col

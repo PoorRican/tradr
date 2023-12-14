@@ -27,7 +27,7 @@ class OscillationMixin(FinancialsMixin, ABC):
         self.threads = threads
         self.lookback = lookback
         self.timeout: str = timeout
-        self.indicators: IndicatorGroup = IndicatorGroup(self.market, freq, indicators)
+        self.indicators: IndicatorGroup = IndicatorGroup(self.market, freq, indicators, unison=True)
 
     def _oscillation(self, signal: Signal, timeout=True, point: pd.Timestamp = None) -> bool:
         """ Allow for repeated buy orders if timeout has been reached.

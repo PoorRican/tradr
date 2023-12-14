@@ -7,7 +7,7 @@ from typing import Mapping, Sequence, Union, NoReturn
 
 from misc import TZ
 from models import IndicatorGroup
-from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow
+from models.indicators import BBANDSRow, MACDRow, STOCHRSIRow, MARow
 from strategies import ThreeProngAlt
 
 
@@ -45,8 +45,7 @@ class Plotter(object):
         container: IndicatorGroup = self.indicators
 
         container[BBANDSRow].plot(self.subplots, **endpoints, render=False)
-        container[MACDRow].plot(self.subplots, macd, **endpoints, render=False)
-        container[STOCHRSIRow].plot(self.subplots, stoch, **endpoints, render=False)
+        container[MARow].plot(self.subplots, **endpoints, render=False)
 
     def graph(self, ):
         """ Plot graph of market price, """

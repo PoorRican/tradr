@@ -29,7 +29,7 @@ class ThreeProngAlt(OscillationMixin):
             *args: Positional arguments to pass to `Strategy.__init__`
             **kwargs: Keyword arguments to pass to `Strategy.__init__`
         """
-        _indicators: List = [BBANDSRow(threshold=.85)]
+        _indicators: List = [BBANDSRow(threshold=.85), MARow()]
         super().__init__(indicators=_indicators, **kwargs)
 
     def _calc_rate(self, extrema: pd.Timestamp, side: Side) -> float:

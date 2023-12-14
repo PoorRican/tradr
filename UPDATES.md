@@ -8,6 +8,7 @@
 # Market
 
 - [ ] Implement websockets instead of polling. This should lead to more accurate data for shorter timeframes (ie: 1m, 5m, etc.)
+- [ ] Implement test market for live simulations
 
 # Indicators
 
@@ -23,8 +24,9 @@
 
 # Strategies
 
-- [ ] `FinancialsMixin` should be used as an attribute instead of a mixin.
-- [ ] unpaired orders are not being accounted for. This affects pnl and should be of upmost priority.
+- [ ] `FinancialsMixin` should be used as a standalone object instead of a mixin. Should be renamed to `OrderHandler`.
+- [X] unpaired orders are not being accounted for. This affects pnl and should be of upmost priority.
+- [ ] Implement builder methods for building strategies
 
 # Analysis
 
