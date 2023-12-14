@@ -270,7 +270,7 @@ class Indicator(ABC):
         """
         pass
 
-    def plot(self, figure: Sequence[Figure], index: int, reindex: pd.Index = None, color=to_rgba('cyan', .1),
+    def plot(self, figure: Figure, reindex: pd.Index = None, color=to_rgba('cyan', .7),
              start: pd.Timestamp = None, stop: pd.Timestamp = None,
              render: bool = True) -> Union[NoReturn, 'Figure']:
         """ Plot onto given figure
@@ -278,8 +278,6 @@ class Indicator(ABC):
         Args:
             figure:
                 Figure to plot onto.
-            index:
-                Index of subplot to plot onto.
             reindex:
                 Index to reindex graph with. If `None`, `graph` is plotted as-is.
             color:
@@ -306,7 +304,7 @@ class Indicator(ABC):
             else:
                 _index = col.index
                 _values = col.values
-            figure[index].plot(_index, _values, color=color)
+            figure.plot(_index, _values, color=color)
 
         if not render:
             return figure
