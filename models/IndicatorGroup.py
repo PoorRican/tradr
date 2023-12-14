@@ -229,7 +229,7 @@ class IndicatorGroup(object):
         unique = len(signals.unique())
         if self.unison and unique == 1:
             pass
-        elif not self.unison and unique <= len(self.indicators) - 1 and \
+        elif not self.unison and unique <= len(self.indicators) and \
                 not self._conflicting_signals(signals):
             pass
         else:
