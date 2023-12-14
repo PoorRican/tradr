@@ -35,7 +35,7 @@ class OscillationMixin(Strategy, ABC):
         Multiple sell orders are always allowed.
 
         If timeout has been reached, then multiple buy orders are allowed. Multiple buy orders are tracked by
-        `OrderHandler.incomplete` and are limited by `order_limit`.
+        `OrderHandler.unsold` and are limited by `order_limit`.
 
         Args:
             signal:
@@ -51,24 +51,24 @@ class OscillationMixin(Strategy, ABC):
             True if `signal` is not a repeated buy order.
             False if `signal` is `HOLD`.
         """
-        if self.order_handler.orders.empty:           # first trade must be "buy"
+        if self.orders.empty:           # first trade must be "buy"
             # TODO: check if `assets` is 0
             return signal == Signal.BUY
 
         if signal is not Signal.HOLD:
 
-            # prevent more buy orders when there are too many incomplete orders
+            # prevent more buy orders when there are too many unsold orders
             if signal == Signal.BUY:
 
                 last_order = self.order_handler.orders.iloc[-1]
 
-                if self.order_handler._remaining == 0:
+                if self.order_handler.remaining_buy_orders == 0:
                     return False
                 # Allow repeated buys on timeout
-                elif last_order['side'] == Signal.BUY and self.order_handler._remaining and timeout:
+                elif last_order['side'] == Signal.BUY and self.order_handler.remaining_buy_orders and timeout:
                     inactive = self._check_timeout(point)
                     if inactive:
-                        self.order_handler._handle_inactive(last_order)
+                        self.order_handler.handle_inactive(last_order)
                     return inactive
 
             return True
@@ -81,7 +81,7 @@ class OscillationMixin(Strategy, ABC):
         Oscillation of trade types is executed here. Duplicate trade type is not returned if a new signal is
         generated.
 
-        Number of incomplete (outstanding) orders is limited here. If there are no remaining allowed orders
+        Number of unsold (outstanding) orders is limited here. If there are no remaining allowed orders
         (as defined by `_remaining`) then False is returned.
 
         Args:
@@ -105,7 +105,7 @@ class OscillationMixin(Strategy, ABC):
 
         signal: Signal = self.indicators.signal(point)
         strength: float = self.indicators.strength(signal, point)
-        if signal is Signal.BUY and self.order_handler._remaining < 1:
+        if signal is Signal.BUY and self.order_handler.remaining_buy_orders < 1:
             pass
         elif self._oscillation(signal, point=point):
             trade = self._propose_trade(signal, point)

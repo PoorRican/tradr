@@ -12,11 +12,11 @@ class OrderHandler(object):
     """ Mixin for Strategy that encapsulates management of capital and assets held.
 
     Functionality mainly involves management of total amount of capital acquired/available and loose orchestration
-    of trading parameters such as maximum open/incomplete trades allowed, or the amount of capital to use for a single
+    of trading parameters such as maximum open/unsold trades allowed, or the amount of capital to use for a single
     trade.
 
-    Open/incomplete buy orders are managed by the `incomplete` container. Assets are considered incomplete if assets
-    acquired have not been sold yet. The number of open/incomplete buy orders is limited by `order_limit`.
+    Open/unsold buy orders are managed by the `unsold` container. Assets are considered unsold if assets
+    acquired have not been sold yet. The number of open/unsold buy orders is limited by `order_limit`.
 
     Capitol and assets are tracked by `capital` and `assets` respectfully. The starting capital to use per trade is
     calculated by `starting` and its returned value shall be as the starting basis for trading in `_calc_amount()`.
@@ -27,9 +27,9 @@ class OrderHandler(object):
 
             Has four modes:
                 - total:
-                    Includes `incomplete`.
+                    Includes `unsold`.
                 - immediate:
-                    excludes `incomplete`. Might result in a negative number if there are open/incomplete orders.
+                    excludes `unsold`. Might result in a negative number if there are open/unsold orders.
                 - growth:
     TODO:
         -   Convert `capital` and `assets` to time-series that tracks balance over time, and why values change
@@ -55,15 +55,15 @@ class OrderHandler(object):
         - Programmatically diagnose estimation (ie: trend, bull/bear power, etc)
     """
 
-    incomplete: pd.DataFrame
-    """ Store for incomplete/open buy orders.
+    unsold: pd.DataFrame
+    """ Store for unsold/open buy orders.
 
     `id` contains the original order ID as found in `orders` and is used when pivoting between the two tables.
     The `unpaired` method should be used when accessing rows from `orders`. Additionally, during trading,
-    `_check_unpaired` is used to select incomplete orders based off of rate.
+    `_check_unpaired` is used to select unsold orders based off of rate.
 
     The `amt` column serves as a ledger to track how much of the asset has been sold (since trade amounts are
-    dynamically calculated taking into account market trends). When assets acquired by an incomplete order are sold,
+    dynamically calculated taking into account market trends). When assets acquired by an unsold order are sold,
     rows are removed from container by `_clean_incomplete()`, but when partially sold, amount of assets sold is
     deducted unsold amount (denoted in the `amt` column).
     """
@@ -96,14 +96,14 @@ class OrderHandler(object):
     """
 
     order_limit: int
-    """ Hard limit on maximum number of incomplete/open orders allowed.
+    """ Hard limit on maximum number of unsold/open orders allowed.
 
     A hard limit is set to reduce exposure to risk but originally intended to manage available amount of capital
     used per transaction (this is implemented via `starting`).
     """
 
     def __init__(self, threshold: float, capital: float = 0, assets: float = 0, order_limit: int = 4, candles: pd.DataFrame = None):
-        self.incomplete: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
+        self.unsold: pd.DataFrame = pd.DataFrame(columns=['amt', 'rate', 'id'])
         self.orders = SuccessfulTrade.container()
         self.failed_orders = FailedTrade.container()
 
@@ -125,12 +125,12 @@ class OrderHandler(object):
         self.order_limit = order_limit
 
     @property
-    def _remaining(self) -> int:
-        """ The number of open/incomplete orders allowed.
+    def remaining_buy_orders(self) -> int:
+        """ The number of open/unsold orders allowed.
 
         When this number is 0, no more buy orders are allowed.
         """
-        return self.order_limit - len(self.incomplete)
+        return self.order_limit - len(self.unsold)
 
     def _timeseries_setter(self, value: Union[float, Tuple['pd.Timestamp', float]], attr: str):
         """ Append a value to a timeseries container.
@@ -201,7 +201,7 @@ class OrderHandler(object):
         Returns:
                 Amount of capital to use when beginning to calculate final trade amount.
         """
-        if self._remaining == 0:
+        if self.remaining_buy_orders == 0:
             msg = '`starting` accessed while buying is restricted (`_remaining` == 0)'
             warn(msg)
             logging.warning(msg)
@@ -220,7 +220,7 @@ class OrderHandler(object):
 
         return realized_pnl + unrealized
 
-    def _adjust_capital(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
+    def adjust_capital(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
         """ Increase available capital when assets are sold, and decrease when assets are bought.
         """
         assert trade.side in (Side.BUY, Side.SELL)
@@ -239,7 +239,7 @@ class OrderHandler(object):
 
         self._capital[extrema] = _capital
 
-    def _adjust_assets(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
+    def adjust_assets(self, trade: SuccessfulTrade, extrema: pd.Timestamp = None) -> NoReturn:
         """ Increase available assets when bought, and decrease when sold.
         """
         assert trade.side in (Side.BUY, Side.SELL)
@@ -258,46 +258,46 @@ class OrderHandler(object):
 
         self._assets[extrema] = _assets
 
-    def unpaired(self) -> pd.DataFrame:
-        """ Select of unpaired orders by cross-referencing `incomplete`.
+    def unsold_buy_orders(self) -> pd.DataFrame:
+        """ Select of unsold buy orders by cross-referencing `unsold`.
 
         This retrieves orders data whose assets have not been sold yet. Used during calculation of pnl, and during
-        normal trading operation to attempt sale of unsold assets and to clear `incomplete` when assets are sold.
+        normal trading operation to attempt sale of unsold assets and to clear `unsold` when assets are sold.
 
         Returns
-            Original dataframe row from `orders` of orders whose IDs are found in `incomplete`
+            Original dataframe row from `orders` of orders whose IDs are found in `unsold`
         """
-        return self.orders[self.orders['id'].isin(self.incomplete['id'].values)]
+        return self.orders[self.orders['id'].isin(self.unsold['id'].values)]
 
-    def _check_unpaired(self, rate: float, original: bool = True) -> pd.DataFrame:
-        """ Get any unpaired orders that can be sold at a profit.
+    def get_sellable_orders(self, rate: float, original: bool = True) -> pd.DataFrame:
+        """ Get any unsold buy orders that can be sold at a profit.
 
         Args:
             rate:
                 Select rows whose rate is <= given `rate`. Since buy orders should be sold at a rate lower than the
-                buy price, rate is used to select incomplete order rows when determining amount of available assets
+                buy price, rate is used to select unsold order rows when determining amount of available assets
                 should be sold.
             original:
-                Boolean flag used to return from `orders` or `incomplete`. This is because if the amount of asset sold
-                is less than the incomplete order, `incomplete` serves as a ledger ta track how much of the asset has
+                Boolean flag used to return from `orders` or `unsold`. This is because if the amount of asset sold
+                is less than the unsold order, `unsold` serves as a ledger ta track how much of the asset has
                 yet to be sold.
 
         Returns:
-            Dataframe row (from `orders` or `incomplete` depending on `original` flag) whose rate falls below `rate`
+            Dataframe row (from `orders` or `unsold` depending on `original` flag) whose rate falls below `rate`
         """
         if original:
-            unpaired = self.unpaired()
+            unpaired = self.unsold_buy_orders()
         else:
-            unpaired = self.incomplete
+            unpaired = self.unsold
         return unpaired[unpaired['rate'] <= rate]
 
     def unrealized_gain(self) -> float:
-        """ Calculate max potential gain if all unpaired orders were sold at the highest rate.
+        """ Calculate max potential gain if all unsold buy orders were sold at the highest rate.
 
         Returns:
             Value of unsold assets sold at most expensive price.
         """
-        unpaired = self.unpaired()
+        unpaired = self.unsold_buy_orders()
 
         if unpaired.empty:
             return 0
@@ -310,8 +310,8 @@ class OrderHandler(object):
         return unpaired['amt'].sum() * highest
 
 
-    def _handle_inactive(self, row: pd.Series) -> NoReturn:
-        """ Add incomplete order to `incomplete` container.
+    def handle_inactive(self, row: pd.Series) -> NoReturn:
+        """ Add unsold order to `unsold` container.
 
         Inactivity is defined by `OscillationMixin.timeout` and is checked during
         `OscillationMixin._oscillation()`.
@@ -323,49 +323,49 @@ class OrderHandler(object):
         assert type(row) is pd.Series
         assert row['side'] == Side.BUY
 
-        if row['id'] in self.incomplete['id'].values:
-            warn('Adding duplicate id found in `incomplete`')
+        if row['id'] in self.unsold['id'].values:
+            warn('Adding duplicate id found in `unsold`')
 
         _row = pd.DataFrame([[row['amt'], row['rate'], row['id']]], columns=['amt', 'rate', 'id'])
-        self.incomplete = pd.concat([self.incomplete, _row],
-                                    ignore_index=True)
+        self.unsold = pd.concat([self.unsold, _row],
+                                ignore_index=True)
 
-    def _clean_incomplete(self, trade: SuccessfulTrade):
-        """ Drop rows from `incomplete` when assets are sold.
+    def clean_incomplete(self, trade: SuccessfulTrade):
+        """ Drop rows from `unsold` when assets are sold.
 
-        The assumption is made during all sales that any orders returned by `_check_unpaired()` are
+        The assumption is made during all sales that any orders returned by `get_sellable_orders()` are
         attempted to be sold. Trend-dependant manipulation reduces order size in which case rows are
         not dropped, but instead amount of assets sold are deducted by `_deduct_sold()`.
 
         Notes:
             This function should be the primary interface through which to remove from or manipulate
-            the `incomplete` container. If all assets are not sold by `trade`, `_deduct_sold()` is
+            the `unsold` container. If all assets are not sold by `trade`, `_deduct_sold()` is
             automatically called.
         """
         if trade.side == Side.SELL:
-            unpaired = self._check_unpaired(trade.rate, original=False)
+            unpaired = self.get_sellable_orders(trade.rate, original=False)
             if not unpaired.empty:
                 # if all assets are sold, drop all rows
                 if trade.amt >= unpaired['amt'].sum():
-                    matching = self.incomplete['id'].isin(unpaired['id'].values)
-                    indices = self.incomplete[matching].index
-                    self.incomplete.drop(index=indices, inplace=True)
+                    matching = self.unsold['id'].isin(unpaired['id'].values)
+                    indices = self.unsold[matching].index
+                    self.unsold.drop(index=indices, inplace=True)
                 # otherwise deduct however much was sold
                 else:
                     self._deduct_sold(trade, unpaired)
 
     def _deduct_sold(self, trade: SuccessfulTrade, unpaired: pd.DataFrame) -> NoReturn:
-        """ Deduct the amount of asset sold from incomplete order storage.
+        """ Deduct the amount of asset sold from unsold order storage.
 
         The amount of asset acquired from the last buy order is accounted for and is not included in the deduction from
-        `incomplete`. When assets from unpaired orders have been completely sold, they are dropped from the dataframe.
+        `unsold`. When assets from unpaired orders have been completely sold, they are dropped from the dataframe.
 
         Notes:
             This function should not be used directly and should only be called within
             `_clean_incomplete()`.
 
             When trend is modulating asset trade amounts, not all assets are sold. For example, during a strong
-            downtrend, a purchase of one unit does not result in the sale of one unit. The `incomplete` store serves as
+            downtrend, a purchase of one unit does not result in the sale of one unit. The `unsold` store serves as
             a ledger of the amount of assets sold. In the same scenario, those assets which have been bought during a
             strong downtrend should be sold during a strong uptrend. Since marginal trades might not be possible during
             a strong downtrend, profit may be recuperated by this strong sale.
@@ -395,6 +395,6 @@ class OrderHandler(object):
             else:
                 # update amount remaining.
                 _remaining = order['amt'] - excess
-                self.incomplete.loc[self.incomplete['id'] == order['id'], 'amt'] = _remaining
+                self.unsold.loc[self.unsold['id'] == order['id'], 'amt'] = _remaining
 
-        self.incomplete.drop(index=_drop, inplace=True)
+        self.unsold.drop(index=_drop, inplace=True)

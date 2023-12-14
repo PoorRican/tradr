@@ -1,7 +1,6 @@
-import logging
 from math import isnan
 import pandas as pd
-from typing import Union, List, ClassVar
+from typing import Union, List
 
 from analysis.trend import STRONG_THRESHOLD
 from models import Trade
@@ -60,7 +59,7 @@ class ThreeProngAlt(OscillationMixin):
         return self.candles.loc[extrema][['open', 'close', third]].mean()
 
     def false_positive_sell(self, trade: Trade, last_order: Union['pd.DataFrame', 'pd.Series']) -> bool:
-        """ Filter false-positive sell signals from incomplete buys.
+        """ Filter false-positive sell signals from unsold buys.
 
         A false-positive occurs when a sell signal is generated, but the price of the last buy is higher than the price.
         This occurs when the sale of the previous buys compensates for the loss. In this case, no sale should be
@@ -112,7 +111,7 @@ class ThreeProngAlt(OscillationMixin):
             last_order = self.orders.iloc[-1]
 
         if side == Side.SELL:
-            incomplete = self.order_handler._check_unpaired(rate)
+            incomplete = self.order_handler.get_sellable_orders(rate)
 
             total = last_order['amt'] + incomplete['amt'].sum()
 

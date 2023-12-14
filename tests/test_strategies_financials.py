@@ -34,62 +34,62 @@ class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
     def test_check_unpaired(self):
         """ Assert that orders with rates lower than given value are returned """
         self.order_handler.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'rate': [5, 6, 7, 8]})
-        self.order_handler.incomplete = pd.DataFrame({'id': [1, 2], 'rate': [5, 6], 'amt': [10, 10]})
+        self.order_handler.unsold = pd.DataFrame({'id': [1, 2], 'rate': [5, 6], 'amt': [10, 10]})
 
         expected = pd.DataFrame({'id': [1, 2], 'rate': [5, 6]})
-        self.assertTrue(self.order_handler._check_unpaired(6).equals(expected))
+        self.assertTrue(self.order_handler.get_sellable_orders(6).equals(expected))
 
         # TODO: check of `original` flag
 
     def test_unpaired(self):
         """ Assert that """
         self.order_handler.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'other': [5, 6, 7, 8]})
-        self.order_handler.incomplete = pd.DataFrame({'id': [1, 2]})
+        self.order_handler.unsold = pd.DataFrame({'id': [1, 2]})
 
         expected = pd.DataFrame({'id': [1, 2], 'other': [5, 6]})
-        self.assertTrue(self.order_handler.unpaired().equals(expected))
+        self.assertTrue(self.order_handler.unsold_buy_orders().equals(expected))
 
     def test_clean_incomplete(self):
         # check that completely sold unpaired buys are removed
         self.order_handler.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'rate': [5, 6, 7, 8]})
-        self.order_handler.incomplete = pd.DataFrame({'id': [1, 2, 3], 'amt': [10, 10, 10], 'rate': [5, 6, 7]})
+        self.order_handler.unsold = pd.DataFrame({'id': [1, 2, 3], 'amt': [10, 10, 10], 'rate': [5, 6, 7]})
         trade = SuccessfulTrade(21, 6, Side.SELL, 9)
-        self.order_handler._clean_incomplete(trade)
-        self.assertEqual([3], self.order_handler.incomplete['id'].to_list())
+        self.order_handler.clean_incomplete(trade)
+        self.assertEqual([3], self.order_handler.unsold['id'].to_list())
 
         # check untouched for buy
         self.order_handler.orders = pd.DataFrame({'id': [1, 2, 3, 4], 'rate': [5, 6, 7, 8]})
-        self.order_handler.incomplete = pd.DataFrame({'id': [2, 3], 'rate': [6, 7], 'amt': [12, 14]})
+        self.order_handler.unsold = pd.DataFrame({'id': [2, 3], 'rate': [6, 7], 'amt': [12, 14]})
         trade = SuccessfulTrade(1, 10, Side.BUY, 9)
-        self.order_handler._clean_incomplete(trade)
-        self.assertEqual([2, 3], self.order_handler.incomplete['id'].to_list())
+        self.order_handler.clean_incomplete(trade)
+        self.assertEqual([2, 3], self.order_handler.unsold['id'].to_list())
 
     def test_remaining(self):
-        self.assertTrue(self.order_handler.incomplete.empty)
+        self.assertTrue(self.order_handler.unsold.empty)
 
         self.order_handler.order_limit = 5
-        self.assertEqual(self.order_handler._remaining, 5)
+        self.assertEqual(self.order_handler.remaining_buy_orders, 5)
 
-        self.order_handler.incomplete = [i for i in range(5)]
-        self.assertEqual(self.order_handler._remaining, 0)
+        self.order_handler.unsold = [i for i in range(5)]
+        self.assertEqual(self.order_handler.remaining_buy_orders, 0)
 
     def test_handle_inactive(self):
-        self.assertTrue(self.order_handler.incomplete.empty)
+        self.assertTrue(self.order_handler.unsold.empty)
 
         row = pd.Series({'amt': 5, 'rate': 5, 'id': 5, 'side': Side.BUY})
 
-        self.order_handler._handle_inactive(row)
+        self.order_handler.handle_inactive(row)
 
-        self.assertTrue(row['id'] in self.order_handler.incomplete['id'].values)
+        self.assertTrue(row['id'] in self.order_handler.unsold['id'].values)
 
         # check that values remain after second addition
         row2 = pd.Series({'amt': 2, 'rate': 2, 'id': 2, 'side': Side.BUY})
-        self.order_handler._handle_inactive(row2)
+        self.order_handler.handle_inactive(row2)
 
-        self.assertTrue(row['id'] in self.order_handler.incomplete['id'].values)
-        self.assertTrue(row2['id'] in self.order_handler.incomplete['id'].values)
+        self.assertTrue(row['id'] in self.order_handler.unsold['id'].values)
+        self.assertTrue(row2['id'] in self.order_handler.unsold['id'].values)
 
-        self.assertEqual(len(self.order_handler.incomplete), 2)
+        self.assertEqual(len(self.order_handler.unsold), 2)
 
         # ============================== #
         # assert exceptions and warnings #
@@ -97,36 +97,36 @@ class FinancialsMixinTestCase(BaseFinancialsMixinTestCase):
         # side must be `BUY
         with self.assertRaises(AssertionError):
             invalid_row = pd.Series({'amt': 5, 'rate': 5, 'id': 5, 'side': Side.SELL})
-            self.order_handler._handle_inactive(invalid_row)
+            self.order_handler.handle_inactive(invalid_row)
 
         # row must be `Series`
         with self.assertRaises(AssertionError):
             # noinspection PyTypeChecker
-            self.order_handler._handle_inactive(pd.DataFrame())
+            self.order_handler.handle_inactive(pd.DataFrame())
 
         # warn upon adding duplicates
         with self.assertWarns(Warning):
-            self.order_handler._handle_inactive(row)
+            self.order_handler.handle_inactive(row)
 
     def test_deduct_sold(self):
         # check that second row is dropped, and difference deducted from the third
         trade = SuccessfulTrade(6, 50, Side.SELL, None)
-        self.order_handler.incomplete = pd.DataFrame({'id': [1, 2, 3], 'amt': [5, 4, 3], 'rate': [60, 50, 40]})
+        self.order_handler.unsold = pd.DataFrame({'id': [1, 2, 3], 'amt': [5, 4, 3], 'rate': [60, 50, 40]})
         self.order_handler.orders = pd.DataFrame({'id': [4], 'rate': ['50'], 'amt': [1], 'side': [Side.BUY]})
-        self.order_handler._deduct_sold(trade, self.order_handler._check_unpaired(trade.rate, False))
+        self.order_handler._deduct_sold(trade, self.order_handler.get_sellable_orders(trade.rate, False))
 
         # assert that first value is kept and second has been dropped
-        self.assertTrue(1 in self.order_handler.incomplete['id'].values)
-        self.assertFalse(2 in self.order_handler.incomplete['id'].values)
-        self.assertEqual(2, self.order_handler.incomplete.iloc[1].amt)
+        self.assertTrue(1 in self.order_handler.unsold['id'].values)
+        self.assertFalse(2 in self.order_handler.unsold['id'].values)
+        self.assertEqual(2, self.order_handler.unsold.iloc[1].amt)
 
     def test_starting(self):
         self.order_handler.capital = 1000
         self.order_handler.order_limit = 10
-        self.order_handler.incomplete = []
+        self.order_handler.unsold = []
         self.assertEqual(self.order_handler.available_capital, 100)
 
-        self.order_handler.incomplete = [1] * 10
+        self.order_handler.unsold = [1] * 10
         with self.assertWarns(Warning):
             self.assertEqual(self.order_handler.available_capital, 100)
 
@@ -180,17 +180,17 @@ class AssetsCapitalTests(BaseFinancialsMixinTestCase):
         self.order_handler.assets = 5
 
         trade = SuccessfulTrade(5, 5, Side.BUY, None)
-        self.order_handler._adjust_assets(trade)
+        self.order_handler.adjust_assets(trade)
         self.assertEqual(self.order_handler.assets, 10)
 
         trade = SuccessfulTrade(3, 5, Side.SELL, None)
-        self.order_handler._adjust_assets(trade)
+        self.order_handler.adjust_assets(trade)
         self.assertEqual(self.order_handler.assets, 7)
 
         # assert warning is raised when set to negative value
         with self.assertWarns(Warning):
             trade = SuccessfulTrade(8, 5, Side.SELL, None)
-            self.order_handler._adjust_assets(trade)
+            self.order_handler.adjust_assets(trade)
             self.assertEqual(self.order_handler.assets, -1)
 
     def test_adjust_capitol(self):
@@ -198,17 +198,17 @@ class AssetsCapitalTests(BaseFinancialsMixinTestCase):
         self.order_handler.capital = (now, 25)
 
         trade = SuccessfulTrade(5, 5, Side.BUY, None)
-        self.order_handler._adjust_capital(trade)
+        self.order_handler.adjust_capital(trade)
         self.assertEqual(self.order_handler.capital, 0)
 
         trade = SuccessfulTrade(3, 10, Side.SELL, None)
-        self.order_handler._adjust_capital(trade)
+        self.order_handler.adjust_capital(trade)
         self.assertEqual(self.order_handler.capital, 30)
 
         # assert warning is raised when set to negative value
         with self.assertWarns(Warning):
             trade = SuccessfulTrade(8, 5, Side.BUY, None)
-            self.order_handler._adjust_capital(trade)
+            self.order_handler.adjust_capital(trade)
             self.assertEqual(-10, self.order_handler.capital)
 
 
@@ -228,9 +228,9 @@ class PNLTestCases(BaseFinancialsMixinTestCase):
             'side': [Side.BUY, Side.BUY, Side.BUY, Side.BUY, Side.BUY],
             'id': [1, 2, 3, 4, 5],
         }
-        # fill incomplete
+        # fill unsold
         incomplete = pd.DataFrame(incomplete_order_data)
-        self.order_handler.unpaired = MagicMock(return_value=incomplete)
+        self.order_handler.unsold_buy_orders = MagicMock(return_value=incomplete)
 
         # fill orders
         orders = pd.DataFrame(order_data)
@@ -238,7 +238,7 @@ class PNLTestCases(BaseFinancialsMixinTestCase):
 
         last_order = self.order_handler.orders.tail(1)
 
-        # assert sum of incomplete + last order
+        # assert sum of unsold + last order
         unpaired = orders.copy()
         _max = max(unpaired['rate'])
         _sum = unpaired['amt'].sum() * _max

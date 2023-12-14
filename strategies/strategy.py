@@ -97,7 +97,7 @@ class Strategy(StoredObject, ABC):
 
     @property
     def unpaired(self) -> pd.DataFrame:
-        return self.order_handler.unpaired()
+        return self.order_handler.unsold_buy_orders()
 
     def _calc_profit(self, trade: Trade, last_trade: Union['pd.Series', 'pd.DataFrame'] = None) -> float:
         """ Calculates profit of a sale.
@@ -114,12 +114,12 @@ class Strategy(StoredObject, ABC):
     def _post_sale(self, extrema: pd.Timestamp, trade: SuccessfulTrade) -> None:
         """ Handle mundane accounting functions for when a sale completes.
 
-        After a sale, sold assets are dropped or deducted from `incomplete` container, and then
+        After a sale, sold assets are dropped or deducted from `unsold` container, and then
         `capital` and `assets` values are adjusted.
         """
-        self.order_handler._clean_incomplete(trade)
-        self.order_handler._adjust_capital(trade, extrema)
-        self.order_handler._adjust_assets(trade, extrema)
+        self.order_handler.clean_incomplete(trade)
+        self.order_handler.adjust_capital(trade, extrema)
+        self.order_handler.adjust_assets(trade, extrema)
 
     def _add_order(self, trade: FutureTrade) -> Union['SuccessfulTrade', 'FailedTrade']:
         """ Create and send order to market, then store in history.
